@@ -9,7 +9,7 @@ import { StartScreen } from "./components/StartScreen";
 import { ProjectInput } from "./components/ProjectInput";
 import { ClarificationStep } from "./components/ClarificationStep";
 import { AnalysisDashboard } from "./components/AnalysisDashboard";
-import { preliminaryAnalysis, mockAnalysis } from "./lib/mockAnalysis";
+import { runHybridFinalAnalysis, runPreliminaryAnalysis } from "./lib/hybridAnalysis";
 import { needsClarification } from "./lib/generateClarifyingQuestions";
 import type { ClarifyingQuestion, ProjectSignal } from "./types/architecture";
 
@@ -21,38 +21,51 @@ export default function App() {
   const [signals, setSignals] = useState<ProjectSignal[]>([]);
   const [questions, setQuestions] = useState<ClarifyingQuestion[]>([]);
   const [analysis, setAnalysis] = useState<ProjectAnalysis | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
 
-  const runFinalAnalysis = (
+  const runFinalAnalysis = async (
     p: string,
     s: StructuredProjectFields,
     answers: ClarificationAnswer[] = [],
     asked: ClarifyingQuestion[] = questions
   ) => {
-    const result = mockAnalysis(p, s, answers, asked);
-    setAnalysis(result);
-    setPhase("analysis");
+    setAnalyzing(true);
+    setAnalysisError(null);
+    try {
+      const { analysis: result } = await runHybridFinalAnalysis(p, s, answers, asked);
+      setAnalysis(result);
+      if (result.meta?.usedFallback && result.meta.aiError) {
+        setAnalysisError(result.meta.aiError);
+      }
+      setPhase("analysis");
+    } catch {
+      setAnalysisError("Nie udało się wykonać analizy. Spróbuj ponownie.");
+    } finally {
+      setAnalyzing(false);
+    }
   };
 
   const handleInputSubmit = (p: string, s: StructuredProjectFields) => {
     setPrompt(p);
     setStructured(s);
-    const { signals: sigs, questions: qs } = preliminaryAnalysis(p, s);
-    setSignals(sigs);
-    setQuestions(qs);
+    const prelim = runPreliminaryAnalysis(p, s);
+    setSignals(prelim.signals);
+    setQuestions(prelim.clarifyingQuestions);
 
-    if (needsClarification(sigs, p.length)) {
+    if (needsClarification(prelim.signals, p.length)) {
       setPhase("clarification");
     } else {
-      runFinalAnalysis(p, s, [], qs);
+      void runFinalAnalysis(p, s, [], prelim.clarifyingQuestions);
     }
   };
 
   const handleClarificationSubmit = (answers: ClarificationAnswer[]) => {
-    runFinalAnalysis(prompt, structured, answers);
+    void runFinalAnalysis(prompt, structured, answers);
   };
 
   const handleClarificationSkip = () => {
-    runFinalAnalysis(prompt, structured, []);
+    void runFinalAnalysis(prompt, structured, []);
   };
 
   const restart = () => {
@@ -63,6 +76,8 @@ export default function App() {
     setSignals([]);
     setQuestions([]);
     setAnalysis(null);
+    setAnalyzing(false);
+    setAnalysisError(null);
   };
 
   return (
@@ -114,8 +129,15 @@ export default function App() {
             onBack={() => setPhase("input")}
           />
         )}
-        {phase === "analysis" && analysis && (
-          <AnalysisDashboard analysis={analysis} onRestart={restart} />
+        {analyzing && (
+          <p className="text-center text-sm text-slate-muted">Trwa analiza projektu…</p>
+        )}
+        {phase === "analysis" && analysis && !analyzing && (
+          <AnalysisDashboard
+            analysis={analysis}
+            onRestart={restart}
+            showAiError={Boolean(analysis.meta?.usedFallback || analysisError)}
+          />
         )}
       </main>
 

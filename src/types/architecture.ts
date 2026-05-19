@@ -68,6 +68,17 @@ export interface LegalBasis {
   description: string;
   scope: string;
   sourceRef?: string;
+  verificationRequired?: boolean;
+}
+
+export type AnalysisSource = "ai" | "rules";
+
+export interface AnalysisMeta {
+  source: AnalysisSource;
+  usedFallback: boolean;
+  aiError?: string;
+  needsClarification: boolean;
+  verifyLegalBasis: boolean;
 }
 
 export interface RiskItem {
@@ -120,6 +131,16 @@ export interface ProjectAnalysis {
   clarifyingQuestionsAsked: ClarifyingQuestion[];
   immediateNextStep: string;
   disclaimer: string;
+  meta?: AnalysisMeta;
+}
+
+export interface PreliminaryAnalysisResult {
+  detectedInputs: string[];
+  uncertainInputs: string[];
+  missingCriticalInputs: string[];
+  clarifyingQuestions: ClarifyingQuestion[];
+  canGenerateFinalPlan: boolean;
+  signals: ProjectSignal[];
 }
 
 export interface ArchitectureRule {

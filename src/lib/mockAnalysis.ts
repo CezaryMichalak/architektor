@@ -17,7 +17,7 @@ import { calculateProjectProgress } from "./calculateProjectProgress";
 import { extractProjectSignals, signalsToDetectedLabels } from "./extractProjectSignals";
 import { generateClarifyingQuestions } from "./generateClarifyingQuestions";
 
-function applyClarificationAnswers(
+export function applyClarificationAnswers(
   signals: ProjectSignal[],
   answers: ClarificationAnswer[]
 ): ProjectSignal[] {

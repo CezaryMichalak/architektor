@@ -8,13 +8,15 @@ import { LegalBasisAccordion } from "./LegalBasisAccordion";
 import { RiskRegister } from "./RiskRegister";
 import { ImmediateNextStep } from "./ImmediateNextStep";
 import { Disclaimer } from "./Disclaimer";
+import { AnalysisStatusBadges } from "./AnalysisStatusBadges";
 
 interface AnalysisDashboardProps {
   analysis: ProjectAnalysis;
   onRestart: () => void;
+  showAiError?: boolean;
 }
 
-export function AnalysisDashboard({ analysis, onRestart }: AnalysisDashboardProps) {
+export function AnalysisDashboard({ analysis, onRestart, showAiError }: AnalysisDashboardProps) {
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -30,6 +32,8 @@ export function AnalysisDashboard({ analysis, onRestart }: AnalysisDashboardProp
           Nowa analiza
         </button>
       </div>
+
+      <AnalysisStatusBadges meta={analysis.meta} showAiError={showAiError} />
 
       <ProjectStatusCard
         projectType={analysis.projectType}

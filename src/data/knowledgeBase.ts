@@ -1,5 +1,146 @@
 import type { LegalBasis } from "../types/architecture";
 
+export type LegalSourceCategory =
+  | "building_law"
+  | "planning"
+  | "technical_regulation"
+  | "local_plan"
+  | "administrative_decision"
+  | "geodesy"
+  | "fire_safety"
+  | "environment"
+  | "conservation"
+  | "other";
+
+export type LegalSourceType = "act" | "regulation" | "local_act" | "decision" | "technical_standard";
+
+export interface LegalSourceRecord {
+  id: string;
+  label: string;
+  category: LegalSourceCategory;
+  description: string;
+  sourceType: LegalSourceType;
+  exactArticleAvailable: boolean;
+  article?: string;
+  verificationRequired: boolean;
+}
+
+export const LEGAL_SOURCES: LegalSourceRecord[] = [
+  {
+    id: "prawo-budowlane",
+    label: "Prawo budowlane",
+    category: "building_law",
+    description:
+      "Ustawa regulująca m.in. pozwolenie na budowę, zgłoszenie robót budowlanych oraz wymagania dotyczące dokumentacji projektowej.",
+    sourceType: "act",
+    exactArticleAvailable: false,
+    verificationRequired: false,
+  },
+  {
+    id: "ustawa-planowanie",
+    label: "Ustawa o planowaniu i zagospodarowaniu przestrzennym",
+    category: "planning",
+    description:
+      "Podstawa planowania przestrzennego, miejscowych planów zagospodarowania przestrzennego oraz warunków zabudowy.",
+    sourceType: "act",
+    exactArticleAvailable: false,
+    verificationRequired: false,
+  },
+  {
+    id: "rozporzadzenie-projekt-budowlany",
+    label: "Rozporządzenie w sprawie szczegółowego zakresu i formy projektu budowlanego",
+    category: "technical_regulation",
+    description: "Określa zakres i formę projektu budowlanego, w tym PZT i PAB.",
+    sourceType: "regulation",
+    exactArticleAvailable: false,
+    verificationRequired: false,
+  },
+  {
+    id: "rozporzadzenie-warunki-techniczne",
+    label: "Rozporządzenie w sprawie warunków technicznych, jakim powinny odpowiadać budynki i ich usytuowanie",
+    category: "technical_regulation",
+    description: "Wymagania techniczne dla budynków, w tym dostępność, instalacje i bezpieczeństwo.",
+    sourceType: "regulation",
+    exactArticleAvailable: false,
+    verificationRequired: false,
+  },
+  {
+    id: "mpzp-lokalna",
+    label: "Lokalna uchwała o miejscowym planie zagospodarowania przestrzennego (MPZP)",
+    category: "local_plan",
+    description:
+      "Akt planistyczny gminy określający przeznaczenie terenu i parametry zabudowy dla danej działki.",
+    sourceType: "local_act",
+    exactArticleAvailable: false,
+    verificationRequired: true,
+  },
+  {
+    id: "decyzja-wz",
+    label: "Decyzja o warunkach zabudowy (WZ)",
+    category: "administrative_decision",
+    description:
+      "Decyzja organu wydawana przy braku MPZP lub gdy jest wymagana do ustalenia zasad zabudowy — po weryfikacji statusu planistycznego.",
+    sourceType: "decision",
+    exactArticleAvailable: false,
+    verificationRequired: true,
+  },
+  {
+    id: "przepisy-geodezyjne",
+    label: "Przepisy geodezyjne i kartograficzne",
+    category: "geodesy",
+    description: "Podstawa opracowania mapy do celów projektowych (MDCP) i materiałów geodezyjnych.",
+    sourceType: "act",
+    exactArticleAvailable: false,
+    verificationRequired: false,
+  },
+  {
+    id: "przepisy-ppoz",
+    label: "Przepisy przeciwpożarowe",
+    category: "fire_safety",
+    description: "Wymagania ochrony przeciwpożarowej — szczególnie dla obiektów użyteczności publicznej i złożonych.",
+    sourceType: "regulation",
+    exactArticleAvailable: false,
+    verificationRequired: false,
+  },
+  {
+    id: "przepisy-srodowisko",
+    label: "Przepisy ochrony środowiska",
+    category: "environment",
+    description: "Procedury i ograniczenia przy inwestycjach mogących oddziaływać na środowisko.",
+    sourceType: "act",
+    exactArticleAvailable: false,
+    verificationRequired: false,
+  },
+  {
+    id: "przepisy-zabytki",
+    label: "Przepisy ochrony zabytków",
+    category: "conservation",
+    description: "Dodatkowe uzgodnienia na terenach chronionych konserwatorsko.",
+    sourceType: "act",
+    exactArticleAvailable: false,
+    verificationRequired: false,
+  },
+];
+
+const SOURCE_BY_ID = new Map(LEGAL_SOURCES.map((s) => [s.id, s]));
+
+export function getLegalSourceById(id: string): LegalSourceRecord | undefined {
+  return SOURCE_BY_ID.get(id);
+}
+
+export function legalSourceToBasis(source: LegalSourceRecord): LegalBasis {
+  return {
+    id: source.id,
+    title: source.label,
+    description: source.verificationRequired
+      ? `${source.description} (do weryfikacji w aktualnym stanie prawnym i dla konkretnej inwestycji)`
+      : source.description,
+    scope: source.category,
+    sourceRef: source.exactArticleAvailable && source.article ? source.article : source.label,
+    verificationRequired: source.verificationRequired,
+  };
+}
+
 export const KNOWLEDGE_BASE_LEGAL: LegalBasis[] = [
   {
     id: "pb-pzp",
@@ -7,7 +148,7 @@ export const KNOWLEDGE_BASE_LEGAL: LegalBasis[] = [
     description:
       "Ustalenie trybu formalnego (pozwolenie na budowę vs zgłoszenie) zależy od rodzaju obiektu, zakresu robót oraz przepisów szczególnych. Przy niepełnej charakterystyce inwestycji należy stosować ostrożną ocenę wstępną.",
     scope: "formal_path",
-    sourceRef: "Ustawa Prawo budowlane",
+    sourceRef: "Prawo budowlane",
   },
   {
     id: "pb-dokumentacja",
@@ -15,7 +156,7 @@ export const KNOWLEDGE_BASE_LEGAL: LegalBasis[] = [
     description:
       "Projekt budowlany obejmuje m.in. projekt zagospodarowania terenu (PZT), projekt architektoniczno-budowlany (PAB) oraz branżowe opracowania w zakresie wymaganym dla danej inwestycji.",
     scope: "documentation",
-    sourceRef: "Ustawa Prawo budowlane",
+    sourceRef: "Prawo budowlane",
   },
   {
     id: "plan-mpzp",
@@ -32,6 +173,7 @@ export const KNOWLEDGE_BASE_LEGAL: LegalBasis[] = [
       "WZ stosuje się tam, gdzie brak jest MPZP lub innych aktów planistycznych w zakresie wymaganym do określenia zasad zabudowy — po uprzedniej analizie statusu planistycznego terenu.",
     scope: "planning",
     sourceRef: "Ustawa o planowaniu i zagospodarowaniu przestrzennym",
+    verificationRequired: true,
   },
   {
     id: "geo-mdcp",
@@ -39,6 +181,7 @@ export const KNOWLEDGE_BASE_LEGAL: LegalBasis[] = [
     description:
       "MDCP stanowi podstawę opracowania PZT i lokalizacji obiektu. Zwykle wymaga uprzedniego opracowania przez geodetę na podstawie pomiaru sytuacyjno-wysokościowego.",
     scope: "documentation",
+    sourceRef: "Przepisy geodezyjne i kartograficzne",
   },
   {
     id: "ochrona-zabytkow",
@@ -46,7 +189,7 @@ export const KNOWLEDGE_BASE_LEGAL: LegalBasis[] = [
     description:
       "Na terenach objętych ochroną konserwatorską lub w strefie wpływu zabytku mogą obowiązywać dodatkowe uzgodnienia i ograniczenia formalno-projektowe.",
     scope: "constraints",
-    sourceRef: "Ustawa o ochronie zabytków",
+    sourceRef: "Przepisy ochrony zabytków",
   },
   {
     id: "ochrona-srodowiska",
@@ -54,8 +197,14 @@ export const KNOWLEDGE_BASE_LEGAL: LegalBasis[] = [
     description:
       "Inwestycje w strefach chronionych lub o potencjalnym oddziaływaniu na środowisko mogą wymagać dodatkowych ustaleń, opinii lub procedur środowiskowych.",
     scope: "constraints",
+    sourceRef: "Przepisy ochrony środowiska",
   },
 ];
+
+export const ALLOWED_LEGAL_IDS = new Set([
+  ...LEGAL_SOURCES.map((s) => s.id),
+  ...KNOWLEDGE_BASE_LEGAL.map((l) => l.id),
+]);
 
 export const DOCUMENT_DEFINITIONS = {
   mpzp_excerpt: {
