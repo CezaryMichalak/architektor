@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+@theme {
+  --color-graphite: #2c3340;
+  --color-navy: #1a2332;
+  --color-slate-muted: #5c6574;
+  --color-accent-blue: #3d6b8c;
+  --color-accent-green: #4a7c6f;
+  --color-surface: #f7f8fa;
+  --color-card: #ffffff;
+  --color-border: #e2e6ec;
+  --font-sans: "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--color-surface);
+  color: var(--color-graphite);
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.field-input {
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+.field-input:focus {
+  border-color: var(--color-accent-blue);
+  outline: none;
+  box-shadow: 0 0 0 1px var(--color-accent-blue);
+}
+
+.grid-bg {
+  background-image:
+    linear-gradient(var(--color-border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-border) 1px, transparent 1px);
+  background-size: 24px 24px;
+  background-position: -1px -1px;
+}
