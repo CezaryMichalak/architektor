@@ -5,6 +5,7 @@ import type {
   ProjectSignal,
 } from "../types/architecture";
 import { signalsToDetectedLabels } from "../lib/extractProjectSignals";
+import { InfoTooltip } from "./InfoTooltip";
 
 interface ClarificationStepProps {
   questions: ClarifyingQuestion[];
@@ -24,6 +25,41 @@ const areaLabels: Record<ClarifyingQuestion["relatedArea"], string> = {
   technical: "Techniczne",
   constraints: "Ograniczenia",
 };
+
+const priorityLabels: Record<ClarifyingQuestion["priority"], string> = {
+  critical: "Krytyczne",
+  important: "Ważne",
+  optional: "Opcjonalne",
+};
+
+const priorityBadgeClass: Record<ClarifyingQuestion["priority"], string> = {
+  critical: "bg-red-100 text-red-800 ring-1 ring-red-200",
+  important: "bg-amber-50 text-amber-800 ring-1 ring-amber-200",
+  optional: "bg-surface text-slate-muted ring-1 ring-border",
+};
+
+const areaTooltipFallbacks: Record<ClarifyingQuestion["relatedArea"], string> = {
+  planning:
+    "Informacja wpływa na ustalenie ścieżki planistycznej, w tym MPZP/WZ oraz zakres analizy uwarunkowań.",
+  documentation:
+    "Informacja pozwala określić kompletność dokumentów wejściowych wymaganych do dalszych prac projektowych.",
+  formal_path:
+    "Informacja może determinować ścieżkę formalną, w tym PnB, zgłoszenie albo konieczność dodatkowych uzgodnień.",
+  specialists:
+    "Informacja pomaga ustalić, których projektantów branżowych lub rzeczoznawców należy zaangażować na danym etapie.",
+  existing_building:
+    "Informacja jest istotna dla oceny zakresu inwentaryzacji, weryfikacji konstrukcji oraz ryzyk technicznych obiektu istniejącego.",
+  technical:
+    "Informacja wpływa na zakres koordynacji technicznej, warunki przyłączenia, obsługę komunikacyjną lub rozwiązania instalacyjne.",
+  constraints:
+    "Informacja pozwala zidentyfikować ograniczenia formalne, środowiskowe, konserwatorskie lub techniczne wpływające na projekt.",
+};
+
+function getQuestionTooltipContent(question: ClarifyingQuestion): string {
+  const reason = question.reason?.trim();
+  if (reason) return reason;
+  return areaTooltipFallbacks[question.relatedArea];
+}
 
 export function ClarificationStep({
   questions,
@@ -95,17 +131,36 @@ export function ClarificationStep({
             key={q.id}
             className="rounded-xl border border-border bg-card p-5 shadow-sm"
           >
-            <legend className="flex flex-wrap items-center gap-2 text-sm font-medium text-graphite">
-              <span className="rounded bg-navy px-2 py-0.5 text-xs text-white">{index + 1}</span>
-              {q.question}
+            <legend className="sr-only">{q.question}</legend>
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex min-w-0 flex-1 items-start gap-2">
+                <span className="shrink-0 rounded bg-navy px-2 py-0.5 text-xs font-medium text-white">
+                  {index + 1}
+                </span>
+                <span className="min-w-0 text-sm font-medium text-graphite">{q.question}</span>
+              </div>
+              <InfoTooltip content={getQuestionTooltipContent(q)} />
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs font-medium ${priorityBadgeClass[q.priority]}`}
+              >
+                {priorityLabels[q.priority]}
+              </span>
               <span className="rounded-full bg-surface px-2 py-0.5 text-xs text-slate-muted">
                 {areaLabels[q.relatedArea]}
               </span>
-              {q.requiredForFinalPlan && (
-                <span className="text-xs text-amber-700">wymagane</span>
+              {q.priority === "critical" && (
+                <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
+                  wymagane do planu
+                </span>
               )}
-            </legend>
-            <p className="mt-2 text-sm text-slate-muted">{q.reason}</p>
+              {q.priority === "important" && q.requiredForFinalPlan && (
+                <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+                  zalecane
+                </span>
+              )}
+            </div>
             {q.options ? (
               <div className="mt-3 flex flex-wrap gap-2">
                 {q.options.map((opt) => (

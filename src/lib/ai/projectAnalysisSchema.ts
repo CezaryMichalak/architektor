@@ -13,6 +13,15 @@ const DOC_STATUSES = ["missing", "partial", "available", "uncertain"] as const;
 const DOC_PRIORITIES = ["critical", "high", "medium"] as const;
 const RISK_LEVELS = ["low", "medium", "high"] as const;
 const SPEC_PRIORITIES = ["essential", "recommended", "conditional"] as const;
+const CLARIFICATION_AREAS = [
+  "planning",
+  "documentation",
+  "formal_path",
+  "specialists",
+  "existing_building",
+  "technical",
+  "constraints",
+] as const;
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -30,31 +39,51 @@ function isStringArray(v: unknown): v is string[] {
   return Array.isArray(v) && v.every(isString);
 }
 
-function validateDocument(v: unknown): RequiredDocument | null {
-  if (!isRecord(v)) return null;
-  if (!isString(v.id) || !isString(v.name) || !isString(v.reason)) return null;
-  if (!DOC_STATUSES.includes(v.status as (typeof DOC_STATUSES)[number])) return null;
-  if (!DOC_PRIORITIES.includes(v.priority as (typeof DOC_PRIORITIES)[number])) return null;
+function pushEnumError(errors: string[], path: string, value: unknown, allowed: readonly string[]): void {
+  errors.push(`${path}: invalid enum "${String(value)}" (allowed: ${allowed.join("|")})`);
+}
+
+function validateDocument(v: unknown, path: string, errors: string[]): RequiredDocument | null {
+  if (!isRecord(v)) {
+    errors.push(`${path}: expected object`);
+    return null;
+  }
+  if (!isString(v.id)) errors.push(`${path}.id: missing or wrong type`);
+  if (!isString(v.name)) errors.push(`${path}.name: missing or wrong type`);
+  if (!isString(v.reason)) errors.push(`${path}.reason: missing or wrong type`);
+  if (!DOC_STATUSES.includes(v.status as (typeof DOC_STATUSES)[number])) {
+    pushEnumError(errors, `${path}.status`, v.status, DOC_STATUSES);
+  }
+  if (!DOC_PRIORITIES.includes(v.priority as (typeof DOC_PRIORITIES)[number])) {
+    pushEnumError(errors, `${path}.priority`, v.priority, DOC_PRIORITIES);
+  }
+  if (errors.some((e) => e.startsWith(`${path}.`))) return null;
   return {
-    id: v.id,
-    name: v.name,
+    id: v.id as string,
+    name: v.name as string,
     abbreviation: isString(v.abbreviation) ? v.abbreviation : undefined,
     status: v.status as RequiredDocument["status"],
     priority: v.priority as RequiredDocument["priority"],
-    reason: v.reason,
+    reason: v.reason as string,
     relatedStage: isString(v.relatedStage) ? v.relatedStage : undefined,
   };
 }
 
-function validateAction(v: unknown): ActionStep | null {
-  if (!isRecord(v)) return null;
-  if (!isString(v.id) || !isString(v.title) || !isString(v.description)) return null;
-  if (!isNumber(v.order)) return null;
+function validateAction(v: unknown, path: string, errors: string[]): ActionStep | null {
+  if (!isRecord(v)) {
+    errors.push(`${path}: expected object`);
+    return null;
+  }
+  if (!isString(v.id)) errors.push(`${path}.id: missing or wrong type`);
+  if (!isString(v.title)) errors.push(`${path}.title: missing or wrong type`);
+  if (!isString(v.description)) errors.push(`${path}.description: missing or wrong type`);
+  if (!isNumber(v.order)) errors.push(`${path}.order: missing or wrong type (number required)`);
+  if (errors.some((e) => e.startsWith(`${path}.`))) return null;
   return {
-    id: v.id,
-    order: v.order,
-    title: v.title,
-    description: v.description,
+    id: v.id as string,
+    order: v.order as number,
+    title: v.title as string,
+    description: v.description as string,
     responsible: isString(v.responsible) ? v.responsible : undefined,
     dependsOn: isStringArray(v.dependsOn) ? v.dependsOn : undefined,
     badge: isString(v.badge) ? v.badge : undefined,
@@ -62,163 +91,229 @@ function validateAction(v: unknown): ActionStep | null {
   };
 }
 
-function validateSpecialist(v: unknown): SpecialistRecommendation | null {
-  if (!isRecord(v)) return null;
-  if (
-    !isString(v.id) ||
-    !isString(v.discipline) ||
-    !isString(v.role) ||
-    !isString(v.whenNeeded) ||
-    !isString(v.inputRequired) ||
-    !isString(v.outputDeliverable) ||
-    !isString(v.reason)
-  ) {
+function validateSpecialist(v: unknown, path: string, errors: string[]): SpecialistRecommendation | null {
+  if (!isRecord(v)) {
+    errors.push(`${path}: expected object`);
     return null;
   }
-  if (!SPEC_PRIORITIES.includes(v.priority as (typeof SPEC_PRIORITIES)[number])) return null;
+  if (!isString(v.id)) errors.push(`${path}.id: missing or wrong type`);
+  if (!isString(v.discipline)) errors.push(`${path}.discipline: missing or wrong type`);
+  if (!isString(v.role)) errors.push(`${path}.role: missing or wrong type`);
+  if (!isString(v.whenNeeded)) errors.push(`${path}.whenNeeded: missing or wrong type`);
+  if (!isString(v.inputRequired)) errors.push(`${path}.inputRequired: missing or wrong type`);
+  if (!isString(v.outputDeliverable)) errors.push(`${path}.outputDeliverable: missing or wrong type`);
+  if (!isString(v.reason)) errors.push(`${path}.reason: missing or wrong type`);
+  if (!SPEC_PRIORITIES.includes(v.priority as (typeof SPEC_PRIORITIES)[number])) {
+    pushEnumError(errors, `${path}.priority`, v.priority, SPEC_PRIORITIES);
+  }
+  if (errors.some((e) => e.startsWith(`${path}.`))) return null;
   return {
-    id: v.id,
-    discipline: v.discipline,
-    role: v.role,
-    whenNeeded: v.whenNeeded,
-    inputRequired: v.inputRequired,
-    outputDeliverable: v.outputDeliverable,
+    id: v.id as string,
+    discipline: v.discipline as string,
+    role: v.role as string,
+    whenNeeded: v.whenNeeded as string,
+    inputRequired: v.inputRequired as string,
+    outputDeliverable: v.outputDeliverable as string,
     priority: v.priority as SpecialistRecommendation["priority"],
-    reason: v.reason,
+    reason: v.reason as string,
   };
 }
 
-function validateLegal(v: unknown): LegalBasis | null {
-  if (!isRecord(v)) return null;
-  if (!isString(v.id) || !isString(v.title) || !isString(v.description) || !isString(v.scope)) {
+function validateLegal(v: unknown, path: string, errors: string[]): LegalBasis | null {
+  if (!isRecord(v)) {
+    errors.push(`${path}: expected object`);
     return null;
   }
+  if (!isString(v.id)) errors.push(`${path}.id: missing or wrong type`);
+  if (!isString(v.title)) errors.push(`${path}.title: missing or wrong type`);
+  if (!isString(v.description)) errors.push(`${path}.description: missing or wrong type`);
+  if (!isString(v.scope)) errors.push(`${path}.scope: missing or wrong type`);
+  if (errors.some((e) => e.startsWith(`${path}.`))) return null;
   return {
-    id: v.id,
-    title: v.title,
-    description: v.description,
-    scope: v.scope,
+    id: v.id as string,
+    title: v.title as string,
+    description: v.description as string,
+    scope: v.scope as string,
     sourceRef: isString(v.sourceRef) ? v.sourceRef : undefined,
     verificationRequired: v.verificationRequired === true,
   };
 }
 
-function validateRisk(v: unknown): RiskItem | null {
-  if (!isRecord(v)) return null;
-  if (!isString(v.id) || !isString(v.title) || !isString(v.description) || !isString(v.mitigation) || !isString(v.category)) {
+function validateRisk(v: unknown, path: string, errors: string[]): RiskItem | null {
+  if (!isRecord(v)) {
+    errors.push(`${path}: expected object`);
     return null;
   }
-  if (!RISK_LEVELS.includes(v.level as (typeof RISK_LEVELS)[number])) return null;
+  if (!isString(v.id)) errors.push(`${path}.id: missing or wrong type`);
+  if (!isString(v.title)) errors.push(`${path}.title: missing or wrong type`);
+  if (!isString(v.description)) errors.push(`${path}.description: missing or wrong type`);
+  if (!isString(v.mitigation)) errors.push(`${path}.mitigation: missing or wrong type`);
+  if (!isString(v.category)) errors.push(`${path}.category: missing or wrong type`);
+  if (!RISK_LEVELS.includes(v.level as (typeof RISK_LEVELS)[number])) {
+    pushEnumError(errors, `${path}.level`, v.level, RISK_LEVELS);
+  }
+  if (errors.some((e) => e.startsWith(`${path}.`))) return null;
   return {
-    id: v.id,
-    title: v.title,
-    description: v.description,
+    id: v.id as string,
+    title: v.title as string,
+    description: v.description as string,
     level: v.level as RiskItem["level"],
-    mitigation: v.mitigation,
-    category: v.category,
+    mitigation: v.mitigation as string,
+    category: v.category as string,
   };
 }
 
-function validateClarifyingQuestion(v: unknown): ProjectAnalysis["clarifyingQuestionsAsked"][number] | null {
-  if (!isRecord(v)) return null;
-  if (!isString(v.id) || !isString(v.question) || !isString(v.reason) || !isString(v.relatedArea)) {
+function validateClarifyingQuestion(
+  v: unknown,
+  path: string,
+  errors: string[]
+): ProjectAnalysis["clarifyingQuestionsAsked"][number] | null {
+  if (!isRecord(v)) {
+    errors.push(`${path}: expected object`);
     return null;
   }
+  if (!isString(v.id)) errors.push(`${path}.id: missing or wrong type`);
+  if (!isString(v.question)) errors.push(`${path}.question: missing or wrong type`);
+  if (!isString(v.reason)) errors.push(`${path}.reason: missing or wrong type`);
+  if (!isString(v.relatedArea)) {
+    errors.push(`${path}.relatedArea: missing or wrong type`);
+  } else if (!CLARIFICATION_AREAS.includes(v.relatedArea as (typeof CLARIFICATION_AREAS)[number])) {
+    pushEnumError(errors, `${path}.relatedArea`, v.relatedArea, CLARIFICATION_AREAS);
+  }
+  if (errors.some((e) => e.startsWith(`${path}.`))) return null;
   return {
-    id: v.id,
-    question: v.question,
-    reason: v.reason,
+    id: v.id as string,
+    question: v.question as string,
+    reason: v.reason as string,
     options: isStringArray(v.options) ? v.options : undefined,
     requiredForFinalPlan: v.requiredForFinalPlan === true,
     relatedArea: v.relatedArea as ProjectAnalysis["clarifyingQuestionsAsked"][number]["relatedArea"],
+    priority: isString(v.priority) ? (v.priority as ProjectAnalysis["clarifyingQuestionsAsked"][number]["priority"]) : "important",
+    triggerReason: isString(v.triggerReason) ? v.triggerReason : (v.reason as string),
   };
+}
+
+/** Collects all schema validation errors (for dev logging and UI). */
+export function collectProjectAnalysisErrors(raw: unknown): string[] {
+  const errors: string[] = [];
+
+  if (!isRecord(raw)) {
+    return ["root: expected JSON object"];
+  }
+
+  if (!isString(raw.projectType)) errors.push("projectType: missing or wrong type");
+  if (!isString(raw.projectStage)) errors.push("projectStage: missing or wrong type");
+  if (!isNumber(raw.advancementPercentage)) errors.push("advancementPercentage: missing or wrong type (number)");
+  if (!isString(raw.immediateNextStep)) errors.push("immediateNextStep: missing or wrong type");
+  if (!isString(raw.disclaimer)) errors.push("disclaimer: missing or wrong type");
+
+  if (!CONFIDENCE_LEVELS.includes(raw.confidenceLevel as ConfidenceLevel)) {
+    pushEnumError(errors, "confidenceLevel", raw.confidenceLevel, CONFIDENCE_LEVELS);
+  }
+
+  if (!isStringArray(raw.detectedInputs)) errors.push("detectedInputs: must be string[]");
+  if (!isStringArray(raw.uncertainInputs)) errors.push("uncertainInputs: must be string[]");
+
+  if (!Array.isArray(raw.missingDocuments)) {
+    errors.push("missingDocuments: must be array");
+  } else {
+    raw.missingDocuments.forEach((item, i) => validateDocument(item, `missingDocuments[${i}]`, errors));
+  }
+
+  if (!Array.isArray(raw.recommendedActions)) {
+    errors.push("recommendedActions: must be array");
+  } else {
+    raw.recommendedActions.forEach((item, i) => validateAction(item, `recommendedActions[${i}]`, errors));
+  }
+
+  if (!Array.isArray(raw.specialists)) {
+    errors.push("specialists: must be array");
+  } else {
+    raw.specialists.forEach((item, i) => validateSpecialist(item, `specialists[${i}]`, errors));
+  }
+
+  if (!Array.isArray(raw.legalBasis)) {
+    errors.push("legalBasis: must be array");
+  } else {
+    raw.legalBasis.forEach((item, i) => validateLegal(item, `legalBasis[${i}]`, errors));
+  }
+
+  if (!Array.isArray(raw.risks)) {
+    errors.push("risks: must be array");
+  } else {
+    raw.risks.forEach((item, i) => validateRisk(item, `risks[${i}]`, errors));
+  }
+
+  if (!Array.isArray(raw.clarifyingQuestionsAsked)) {
+    errors.push("clarifyingQuestionsAsked: must be array");
+  } else {
+    raw.clarifyingQuestionsAsked.forEach((item, i) =>
+      validateClarifyingQuestion(item, `clarifyingQuestionsAsked[${i}]`, errors)
+    );
+  }
+
+  return errors;
 }
 
 /** Parses raw JSON into a ProjectAnalysis-shaped object (untrusted until validateAnalysis). */
 export function parseProjectAnalysisJson(raw: unknown): ProjectAnalysis | null {
-  if (!isRecord(raw)) return null;
-
-  if (
-    !isString(raw.projectType) ||
-    !isString(raw.projectStage) ||
-    !isNumber(raw.advancementPercentage) ||
-    !isString(raw.immediateNextStep) ||
-    !isString(raw.disclaimer)
-  ) {
-    return null;
-  }
-
-  if (!CONFIDENCE_LEVELS.includes(raw.confidenceLevel as ConfidenceLevel)) return null;
-  if (!isStringArray(raw.detectedInputs) || !isStringArray(raw.uncertainInputs)) return null;
+  const errors = collectProjectAnalysisErrors(raw);
+  if (errors.length > 0 || !isRecord(raw)) return null;
 
   const missingDocuments: RequiredDocument[] = [];
-  if (Array.isArray(raw.missingDocuments)) {
-    for (const item of raw.missingDocuments) {
-      const doc = validateDocument(item);
-      if (!doc) return null;
-      missingDocuments.push(doc);
-    }
-  } else return null;
+  for (const item of raw.missingDocuments as unknown[]) {
+    const doc = validateDocument(item, "missingDocuments", []);
+    if (doc) missingDocuments.push(doc);
+  }
 
   const recommendedActions: ActionStep[] = [];
-  if (Array.isArray(raw.recommendedActions)) {
-    for (const item of raw.recommendedActions) {
-      const action = validateAction(item);
-      if (!action) return null;
-      recommendedActions.push(action);
-    }
-  } else return null;
+  for (const item of raw.recommendedActions as unknown[]) {
+    const action = validateAction(item, "recommendedActions", []);
+    if (action) recommendedActions.push(action);
+  }
 
   const specialists: SpecialistRecommendation[] = [];
-  if (Array.isArray(raw.specialists)) {
-    for (const item of raw.specialists) {
-      const spec = validateSpecialist(item);
-      if (!spec) return null;
-      specialists.push(spec);
-    }
-  } else return null;
+  for (const item of raw.specialists as unknown[]) {
+    const spec = validateSpecialist(item, "specialists", []);
+    if (spec) specialists.push(spec);
+  }
 
   const legalBasis: LegalBasis[] = [];
-  if (Array.isArray(raw.legalBasis)) {
-    for (const item of raw.legalBasis) {
-      const legal = validateLegal(item);
-      if (!legal) return null;
-      legalBasis.push(legal);
-    }
-  } else return null;
+  for (const item of raw.legalBasis as unknown[]) {
+    const legal = validateLegal(item, "legalBasis", []);
+    if (legal) legalBasis.push(legal);
+  }
 
   const risks: RiskItem[] = [];
-  if (Array.isArray(raw.risks)) {
-    for (const item of raw.risks) {
-      const risk = validateRisk(item);
-      if (!risk) return null;
-      risks.push(risk);
-    }
-  } else return null;
+  for (const item of raw.risks as unknown[]) {
+    const risk = validateRisk(item, "risks", []);
+    if (risk) risks.push(risk);
+  }
 
   const clarifyingQuestionsAsked: ProjectAnalysis["clarifyingQuestionsAsked"] = [];
-  if (Array.isArray(raw.clarifyingQuestionsAsked)) {
-    for (const item of raw.clarifyingQuestionsAsked) {
-      const q = validateClarifyingQuestion(item);
-      if (!q) return null;
-      clarifyingQuestionsAsked.push(q);
-    }
-  } else return null;
+  for (const item of raw.clarifyingQuestionsAsked as unknown[]) {
+    const q = validateClarifyingQuestion(item, "clarifyingQuestionsAsked", []);
+    if (q) clarifyingQuestionsAsked.push(q);
+  }
 
   return {
-    projectType: raw.projectType,
-    projectStage: raw.projectStage,
-    advancementPercentage: Math.min(100, Math.max(0, Math.round(raw.advancementPercentage))),
+    projectType: raw.projectType as string,
+    projectStage: raw.projectStage as string,
+    advancementPercentage: Math.min(100, Math.max(0, Math.round(raw.advancementPercentage as number))),
     confidenceLevel: raw.confidenceLevel as ConfidenceLevel,
-    detectedInputs: raw.detectedInputs,
-    uncertainInputs: raw.uncertainInputs,
+    detectedInputs: raw.detectedInputs as string[],
+    uncertainInputs: raw.uncertainInputs as string[],
     missingDocuments,
     recommendedActions,
     specialists,
     legalBasis,
     risks,
     clarifyingQuestionsAsked,
-    immediateNextStep: raw.immediateNextStep,
-    disclaimer: raw.disclaimer,
+    immediateNextStep: raw.immediateNextStep as string,
+    disclaimer: raw.disclaimer as string,
+    projectSubtype: isString(raw.projectSubtype) ? raw.projectSubtype : undefined,
+    investorBriefStage: isString(raw.investorBriefStage) ? raw.investorBriefStage : undefined,
+    geotechnicalStatus: isString(raw.geotechnicalStatus) ? raw.geotechnicalStatus : undefined,
+    investorBriefChecklist: isStringArray(raw.investorBriefChecklist) ? raw.investorBriefChecklist : undefined,
   };
 }

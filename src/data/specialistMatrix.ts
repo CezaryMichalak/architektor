@@ -81,4 +81,36 @@ export const SPECIALIST_MATRIX: SpecialistRecommendation[] = [
     priority: "conditional",
     reason: "Może wydłużyć ścieżkę formalną i wymaga wczesnej koordynacji.",
   },
+  {
+    id: "geotechnical",
+    discipline: "Geotechnik",
+    role: "Opinia geotechniczna, kategoria geotechniczna, badania podłoża",
+    whenNeeded:
+      "Przed projektem fundamentów i konstrukcji — dla nowej zabudowy, hal, magazynów, wielorodzinnych i rozbudów z poszerzeniem fundamentów",
+    inputRequired: "MDCP, lokalizacja obiektu, zakres inwestycji, historia terenu (przemysł)",
+    outputDeliverable: "Opinia geotechniczna, parametry podłoża, zalecenia fundamentacji",
+    priority: "essential",
+    reason:
+      "Standard profesjonalnej koordynacji — bez rozpoznania gruntu nie należy projektować fundamentów ani płyt przemysłowych.",
+  },
+  {
+    id: "technology",
+    discipline: "Technolog / proces technologiczny",
+    role: "Brief technologiczny i układ procesu produkcyjnego",
+    whenNeeded: "Hale produkcyjne, fabryki, magazyny z zaawansowaną logistyką",
+    inputRequired: "Program produkcji, linie, media procesowe, BHP",
+    outputDeliverable: "Brief technologiczny, wymagania dla architektury i instalacji",
+    priority: "conditional",
+    reason: "Układ hali i mediów musi wynikać z procesu — brak briefu technologicznego blokuje koncepcję.",
+  },
+  {
+    id: "traffic",
+    discipline: "Doradca ruchu / drogi wewnętrzne",
+    role: "Układ dróg, parkingów i placów manewrowych",
+    whenNeeded: "Magazyny z TIR, centra handlowe, wielorodzinne z dużym parkingiem",
+    inputRequired: "MPZP/WZ, natężenia ruchu, wymiary pojazdów",
+    outputDeliverable: "Koncepcja ruchu, wymiary placów i zjazdów",
+    priority: "conditional",
+    reason: "Plac manewrowy i drogi pożarowe wpływają na PZT i parametry planistyczne.",
+  },
 ];

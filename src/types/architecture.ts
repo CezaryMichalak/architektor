@@ -28,9 +28,13 @@ export interface StructuredProjectFields {
   planningStatus?: string;
   buildingType?: "new" | "existing" | "mixed" | "unknown";
   buildingCategory?: string;
+  /** Canonical project type key from classification layer */
+  projectSubtype?: string;
   locationContext?: string;
   documentationAvailable?: string[];
   specialConstraints?: string[];
+  investorBriefStage?: "missing" | "partial" | "available" | "unknown";
+  geotechnicalStatus?: string;
 }
 
 export interface ProjectSignal {
@@ -73,10 +77,25 @@ export interface LegalBasis {
 
 export type AnalysisSource = "ai" | "rules";
 
+export type AnalysisErrorCode =
+  | "missing_api_key"
+  | "ai_request_failed"
+  | "invalid_json_schema"
+  | "invalid_model_response"
+  | "server_unavailable"
+  | "sdk_error"
+  | "model_not_supported"
+  | "network_error";
+
 export interface AnalysisMeta {
   source: AnalysisSource;
   usedFallback: boolean;
   aiError?: string;
+  /** Machine-readable reason for fallback (dev diagnostics + UI in DEV). */
+  aiErrorCode?: AnalysisErrorCode;
+  fallbackReason?: string;
+  /** First schema validation errors (dev UI, max 3). */
+  schemaValidationErrors?: string[];
   needsClarification: boolean;
   verifyLegalBasis: boolean;
 }
@@ -101,13 +120,17 @@ export interface ActionStep {
   timeframe?: string;
 }
 
+export type QuestionPriority = "critical" | "important" | "optional";
+
 export interface ClarifyingQuestion {
   id: string;
   question: string;
   reason: string;
   options?: string[];
   requiredForFinalPlan: boolean;
+  priority: QuestionPriority;
   relatedArea: ClarificationArea;
+  triggerReason: string;
 }
 
 export interface ClarificationAnswer {
@@ -131,6 +154,11 @@ export interface ProjectAnalysis {
   clarifyingQuestionsAsked: ClarifyingQuestion[];
   immediateNextStep: string;
   disclaimer: string;
+  /** Classified investment subtype key (e.g. warehouse, multi_family) */
+  projectSubtype?: string;
+  investorBriefStage?: string;
+  geotechnicalStatus?: string;
+  investorBriefChecklist?: string[];
   meta?: AnalysisMeta;
 }
 

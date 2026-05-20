@@ -7,9 +7,12 @@ import type {
   StructuredProjectFields,
 } from "../types/architecture";
 import { analyzeWithAI } from "./ai/analyzeWithAI";
-import { applySafetyPass } from "./ai/safetyPass";
+import { normalizeAiAnalysisPayload } from "./ai/normalizeAiAnalysis";
+import { applyPostAiPasses } from "./ai/applyPostAiPasses";
 import { applySourceGuard } from "./ai/sourceGuard";
 import { validateAnalysis } from "./ai/validateAnalysis";
+import type { AnalysisErrorCode } from "../types/architecture";
+import { classifyProjectType } from "./classifyProjectType";
 import { extractProjectSignals, signalsToDetectedLabels } from "./extractProjectSignals";
 import { applyClarificationAnswers, mockAnalysis, preliminaryAnalysis } from "./mockAnalysis";
 
@@ -28,6 +31,7 @@ function buildPreliminary(
   structured?: StructuredProjectFields
 ): PreliminaryAnalysisResult {
   const { signals, questions } = preliminaryAnalysis(prompt, structured);
+  const classification = classifyProjectType(signals, prompt, structured);
   const uncertain: string[] = [];
   const missingCritical: string[] = [];
 
@@ -38,14 +42,23 @@ function buildPreliminary(
   if (signals.find((s) => s.key === "hasMdcp")?.value === false) {
     missingCritical.push("MDCP / pomiad geodezyjny");
   }
-  if (!signals.find((s) => s.key === "buildingCategory")) {
+  if (
+    !signals.find((s) => s.key === "buildingCategory") &&
+    classification.projectType === "unknown"
+  ) {
     uncertain.push("Kategoria i funkcja obiektu");
     missingCritical.push("Kategoria obiektu");
   }
+  if (classification.projectType === "unknown") {
+    uncertain.push("Typ inwestycji — wymaga doprecyzowania (krytyczne)");
+  }
 
-  const requiredQs = questions.filter((q) => q.requiredForFinalPlan);
+  const blockingQs = questions.filter(
+    (q) => q.priority === "critical" || (q.requiredForFinalPlan && q.priority !== "optional")
+  );
   const canGenerateFinalPlan =
-    missingCritical.length === 0 && requiredQs.length === 0;
+    questions.length === 0 ||
+    (missingCritical.length === 0 && blockingQs.length === 0);
 
   return {
     detectedInputs: signalsToDetectedLabels(signals),
@@ -85,14 +98,36 @@ export async function runHybridFinalAnalysis(
   });
 
   let validationError: string | undefined;
+  let validationErrorCode: AnalysisErrorCode | undefined;
 
   if (aiResult.ok && aiResult.analysis) {
-    const validated = validateAnalysis(aiResult.analysis);
+    const normalized = normalizeAiAnalysisPayload(aiResult.analysis);
+    const validated = validateAnalysis(normalized);
     if (!validated.ok) {
-      validationError = validated.errors.join("; ");
+      const schemaErrors = validated.allErrors ?? validated.errors;
+      validationError =
+        "AI returned JSON, but it failed schema validation. Fallback used.";
+      validationErrorCode = "invalid_json_schema";
+      if (import.meta.env.DEV) {
+        console.warn("[architektor-ai] schema validation failed", schemaErrors.slice(0, 10));
+      }
+      const fallbackRaw = mockAnalysis(prompt, structuredFields, clarificationAnswers, questionsAsked);
+      const fallback = applyPostAiPasses(fallbackRaw, signals, prompt);
+      const meta: AnalysisMeta = {
+        source: "rules",
+        usedFallback: true,
+        aiError: validationError,
+        aiErrorCode: validationErrorCode,
+        fallbackReason: "schema_validation_failed",
+        schemaValidationErrors: schemaErrors.slice(0, 3),
+        needsClarification:
+          fallback.uncertainInputs.length > 0 || fallback.confidenceLevel === "low",
+        verifyLegalBasis: fallback.legalBasis.some((l) => l.verificationRequired === true),
+      };
+      return { analysis: { ...fallback, meta }, meta };
     } else if (validated.analysis) {
       let analysis = applySourceGuard(validated.analysis);
-      analysis = applySafetyPass(analysis, signals);
+      analysis = applyPostAiPasses(analysis, signals, prompt);
       analysis.clarifyingQuestionsAsked = questionsAsked;
 
       const meta: AnalysisMeta = {
@@ -105,11 +140,30 @@ export async function runHybridFinalAnalysis(
     }
   }
 
-  const fallback = mockAnalysis(prompt, structuredFields, clarificationAnswers, questionsAsked);
+  const fallbackReason =
+    validationErrorCode === "invalid_json_schema"
+      ? "schema_validation_failed"
+      : aiResult.fallbackReason ?? "ai_unavailable";
+
+  if (import.meta.env.DEV) {
+    console.warn("[architektor-ai] using rule fallback", {
+      reason: fallbackReason,
+      errorCode: aiResult.errorCode ?? validationErrorCode,
+      error: aiResult.error ?? validationError,
+    });
+  }
+
+  const fallbackRaw = mockAnalysis(prompt, structuredFields, clarificationAnswers, questionsAsked);
+  const fallback = applyPostAiPasses(fallbackRaw, signals, prompt);
   const meta: AnalysisMeta = {
     source: "rules",
     usedFallback: true,
-    aiError: aiResult.error ?? validationError,
+    aiError:
+      validationErrorCode === "invalid_json_schema"
+        ? validationError ?? "AI returned JSON, but it failed schema validation. Fallback used."
+        : aiResult.error ?? validationError,
+    aiErrorCode: aiResult.errorCode ?? validationErrorCode,
+    fallbackReason,
     needsClarification:
       fallback.uncertainInputs.length > 0 || fallback.confidenceLevel === "low",
     verifyLegalBasis: fallback.legalBasis.some((l) => l.verificationRequired === true),

@@ -1,11 +1,19 @@
 import type { ArchitectureRule, ProjectSignal } from "../types/architecture";
+import { evaluateGeotechnicalNeeds } from "./geotechnicalRules";
+import { evaluateInvestorBrief } from "./investorBriefRules";
 import { KNOWLEDGE_BASE_LEGAL } from "./knowledgeBase";
+import type { ProjectTypeKey } from "../types/projectType";
 
 function hasSignal(signals: ProjectSignal[], key: string, value?: string | boolean): boolean {
   const s = signals.find((x) => x.key === key);
   if (!s) return false;
   if (value === undefined) return true;
   return String(s.value) === String(value);
+}
+
+function projectType(signals: ProjectSignal[]): ProjectTypeKey {
+  const v = signals.find((x) => x.key === "projectSubtype")?.value;
+  return (v ? String(v) : "unknown") as ProjectTypeKey;
 }
 
 function doc(
@@ -75,11 +83,15 @@ export const ARCHITECTURE_RULES: ArchitectureRule[] = [
     clarificationTriggers: [
       {
         id: "cq-planning-params",
-        question: "Czy znasz już przeznaczenie terenu i kluczowe parametry z MPZP (np. intensywność, wysokość)?",
-        reason: "Parametry planistyczne determinują koncepcję i zakres dokumentacji.",
+        question:
+          "Czy znane są przeznaczenie terenu oraz parametry z obowiązującego MPZP (intensywność, wysokość, linia zabudowy, PBC) w stopniu umożliwiającym opracowanie PZT?",
+        reason:
+          "Bez tych ustaleń nie należy rozwijać koncepcji zabudowy — parametry planistyczne stanowią ramy formalne dla PZT/PAB i weryfikacji w organie AAB.",
         options: ["Tak, mam ustalenia", "Częściowo", "Nie — wymagam wypisu"],
         requiredForFinalPlan: true,
+        priority: "important",
         relatedArea: "planning",
+        triggerReason: "rule-mpzp-excerpt",
       },
     ],
   },
@@ -135,11 +147,15 @@ export const ARCHITECTURE_RULES: ArchitectureRule[] = [
     clarificationTriggers: [
       {
         id: "cq-wz-intent",
-        question: "Czy inwestycja ma charakter nowej zabudowy na działce bez obowiązującego MPZP?",
-        reason: "Określa właściwość postępowania o WZ.",
+        question:
+          "Czy inwestycja zakłada nową zabudowę na działce bez obowiązującego MPZP, co uzasadnia postępowanie o decyzję o warunkach zabudowy (WZ)?",
+        reason:
+          "Charakter inwestycji (nowa zabudowa vs modernizacja istniejącego obiektu) wpływa na zakres postępowania, wymagane załączniki do wniosku o WZ oraz harmonogram uzgodnień przed opracowaniem PZT.",
         options: ["Tak", "Nie — modernizacja", "Nie wiem"],
         requiredForFinalPlan: true,
+        priority: "important",
         relatedArea: "formal_path",
+        triggerReason: "rule-no-mpzp-wz",
       },
     ],
   },
@@ -172,16 +188,7 @@ export const ARCHITECTURE_RULES: ArchitectureRule[] = [
     ],
     projectStageImpact: 0,
     confidenceLevel: "low",
-    clarificationTriggers: [
-      {
-        id: "cq-planning-status",
-        question: "Czy na terenie inwestycji obowiązuje miejscowy plan zagospodarowania przestrzennego (MPZP)?",
-        reason: "Kluczowe rozróżnienie ścieżki planistycznej.",
-        options: ["Tak, MPZP obowiązuje", "Nie — brak MPZP", "Nie wiem — wymaga weryfikacji"],
-        requiredForFinalPlan: true,
-        relatedArea: "planning",
-      },
-    ],
+    clarificationTriggers: [],
   },
   {
     id: "rule-no-mdcp",
@@ -223,24 +230,7 @@ export const ARCHITECTURE_RULES: ArchitectureRule[] = [
     ],
     projectStageImpact: 8,
     confidenceLevel: "high",
-    clarificationTriggers: [
-      {
-        id: "cq-utilities",
-        question: "Czy na działce są ustalone przyłącza mediów (woda, kanalizacja, energia, gaz)?",
-        reason: "Wpływa na PZT i uzgodnienia z gestorami sieci.",
-        options: ["Tak — wszystkie", "Częściowo", "Nie — do uzgodnienia", "Nie wiem"],
-        requiredForFinalPlan: false,
-        relatedArea: "technical",
-      },
-      {
-        id: "cq-road-access",
-        question: "Jaki jest dostęp do drogi publicznej (bezpośredni, serwitut, do ustalenia)?",
-        reason: "Warunek lokalizacji zjazdu i zgodności z przepisami drogowymi.",
-        options: ["Bezpośredni", "Przez serwitut", "Brak — wymaga rozwiązania", "Nie wiem"],
-        requiredForFinalPlan: false,
-        relatedArea: "technical",
-      },
-    ],
+    clarificationTriggers: [],
   },
   {
     id: "rule-doc-stages",
@@ -309,24 +299,19 @@ export const ARCHITECTURE_RULES: ArchitectureRule[] = [
     ],
     projectStageImpact: 5,
     confidenceLevel: "medium",
-    clarificationTriggers: [
-      {
-        id: "cq-building-scope",
-        question: "Jaki jest zakres robót (rozbudowa, przebudowa, nadbudowa, zmiana użytkowania)?",
-        reason: "Determinuje zakres dokumentacji i uzgodnień.",
-        options: ["Rozbudowa", "Przebudowa", "Nadbudowa", "Zmiana użytkowania", "Kilka z powyższych"],
-        requiredForFinalPlan: true,
-        relatedArea: "existing_building",
-      },
-    ],
+    clarificationTriggers: [],
   },
   {
     id: "rule-non-simple-residential",
     title: "Zabudowa mieszkaniowa inna niż prosta jednorodzinna",
     condition: (s) =>
       hasSignal(s, "buildingCategory", "multi_family") ||
+      hasSignal(s, "buildingCategory", "service") ||
       hasSignal(s, "buildingCategory", "services") ||
-      hasSignal(s, "buildingCategory", "public"),
+      hasSignal(s, "buildingCategory", "office") ||
+      hasSignal(s, "buildingCategory", "retail") ||
+      hasSignal(s, "buildingCategory", "public") ||
+      hasSignal(s, "buildingCategory", "public_utility"),
     professionalRecommendation:
       "Przy budynkach wielorodzinnych i obiektach użyteczności publicznej konieczna jest wcześniejsza koordynacja branżowa: PPOŻ, sanitarne, dostępność oraz ewentualne uzgodnienia specjalne.",
     legalBasis: [KNOWLEDGE_BASE_LEGAL[0], KNOWLEDGE_BASE_LEGAL[1]],
@@ -385,16 +370,7 @@ export const ARCHITECTURE_RULES: ArchitectureRule[] = [
     ],
     projectStageImpact: 0,
     confidenceLevel: "medium",
-    clarificationTriggers: [
-      {
-        id: "cq-constraints",
-        question: "Czy inwestycja dotyczy obszaru chronionego (zabytki, Natura 2000, park krajobrazowy)?",
-        reason: "Może wymagać dodatkowych procedur i opinii.",
-        options: ["Tak — konserwacja", "Tak — środowisko", "Tak — oba", "Nie", "Nie wiem"],
-        requiredForFinalPlan: true,
-        relatedArea: "constraints",
-      },
-    ],
+    clarificationTriggers: [],
   },
   {
     id: "rule-pnb-unclear",
@@ -438,16 +414,7 @@ export const ARCHITECTURE_RULES: ArchitectureRule[] = [
     ],
     projectStageImpact: 0,
     confidenceLevel: "low",
-    clarificationTriggers: [
-      {
-        id: "cq-formal-path",
-        question: "Czy zakres inwestycji obejmuje wyłącznie budynek mieszkalny jednorodzinny o prostym zakresie?",
-        reason: "Wpływa na wstępną ocenę trybu formalnego.",
-        options: ["Tak — dom jednorodzinny", "Nie — szerszy zakres", "Nie wiem"],
-        requiredForFinalPlan: false,
-        relatedArea: "formal_path",
-      },
-    ],
+    clarificationTriggers: [],
   },
   {
     id: "rule-single-family-mpzp",
@@ -464,6 +431,333 @@ export const ARCHITECTURE_RULES: ArchitectureRule[] = [
     nextSteps: [],
     projectStageImpact: 5,
     confidenceLevel: "high",
+    clarificationTriggers: [],
+  },
+  {
+    id: "rule-geotechnical",
+    title: "Rozpoznanie geotechniczne przed fundamentami",
+    condition: (s) => {
+      const pt = projectType(s);
+      const geo = evaluateGeotechnicalNeeds({
+        projectType: pt,
+        isNewBuilding: hasSignal(s, "buildingType", "new") || !hasSignal(s, "buildingType", "existing"),
+        isIndustrial: hasSignal(s, "isIndustrial", true),
+        isExtension: hasSignal(s, "isExtensionProject", true) || hasSignal(s, "buildingType", "existing"),
+        hasGeotechnicalOpinion: hasSignal(s, "hasGeotechnicalOpinion", true),
+      });
+      return geo.documents.length > 0;
+    },
+    professionalRecommendation:
+      "Zaleca się zlecenie opinii geotechnicznej i ewentualnych badań podłoża przed projektem fundamentów i konstrukcji — zgodnie ze standardem profesjonalnej koordynacji projektowej.",
+    legalBasis: [
+      {
+        id: "geo-coordination",
+        title: "Koordynacja geotechniczna",
+        description:
+          "Opinia geotechniczna stanowi dokument wejściowy do projektu fundamentów — szczegóły prawne do weryfikacji w aktualnych przepisach.",
+        scope: "geotechnics",
+        verificationRequired: true,
+      },
+    ],
+    requiredDocuments: [
+      doc(
+        "geotechnical_opinion",
+        "Opinia geotechniczna / rozpoznanie podłoża",
+        "GEO",
+        "missing",
+        "critical",
+        "Wymagana przed projektem fundamentów i konstrukcji nośnej."
+      ),
+    ],
+    requiredSpecialists: [],
+    risks: [
+      {
+        id: "r-geotech-delay",
+        title: "Opóźnienie konstrukcji bez geotechniki",
+        description: "Projekt fundamentów bez rozpoznania gruntu niesie ryzyko przeprojektowania.",
+        level: "high",
+        mitigation: "Zlecić geotechnika równolegle z MDCP lub zaraz po niej.",
+        category: "geotechnics",
+      },
+    ],
+    nextSteps: [
+      {
+        id: "ns-geo-1",
+        order: 1,
+        title: "Zlecić rozpoznanie geotechniczne i opinię geotechniczną",
+        description:
+          "Przed zamrożeniem rozwiązań fundamentowych i konstrukcji — na podstawie MDCP i zakresu inwestycji.",
+        badge: "GEO",
+        timeframe: "2–8 tygodni",
+      },
+    ],
+    projectStageImpact: 6,
+    confidenceLevel: "high",
+    clarificationTriggers: [
+      {
+        id: "cq-geotechnical",
+        question:
+          "Czy wykonano opinię geotechniczną (badania podłoża, kategoria geotechniczna, zalecenia fundamentacji) przed pracami konstrukcyjnymi?",
+        reason:
+          "Rozpoznanie gruntu warunkuje rodzaj fundamentów, płyt i nośność posadzek — bez tego nie należy rozwijać PAB w zakresie konstrukcji.",
+        options: ["Tak — posiadam", "Nie — do zlecenia", "W trakcie", "Nie wiem"],
+        requiredForFinalPlan: false,
+        priority: "important",
+        relatedArea: "technical",
+        triggerReason: "geotechnical_required",
+      },
+    ],
+  },
+  {
+    id: "rule-investor-brief",
+    title: "Wytyczne inwestora / brief projektowy",
+    condition: (s) => {
+      const pt = projectType(s);
+      if (pt === "unknown") return false;
+      const brief = evaluateInvestorBrief(
+        pt,
+        hasSignal(s, "hasInvestorBrief", true),
+        hasSignal(s, "investorBriefStage", "partial")
+      );
+      return brief.status === "missing" || brief.status === "partial";
+    },
+    professionalRecommendation:
+      "Przed rozwinięciem koncepcji PZT/PAB należy zebrać wytyczne inwestora (brief projektowy) jako dokument wejściowy do prac koncepcyjnych.",
+    legalBasis: [
+      {
+        id: "brief-coordination",
+        title: "Brief projektowy — dokument wejściowy",
+        description:
+          "Standard profesjonalnej koordynacji projektowej / dokument wejściowy do prac koncepcyjnych.",
+        scope: "coordination",
+        verificationRequired: false,
+      },
+    ],
+    requiredDocuments: [
+      doc(
+        "investor_brief",
+        "Wytyczne inwestora / brief projektowy",
+        "BRIEF",
+        "missing",
+        "high",
+        "Brak briefu zwiększa ryzyko niezgodności koncepcji z oczekiwaniami inwestora."
+      ),
+    ],
+    requiredSpecialists: [],
+    risks: [
+      {
+        id: "r-brief-missing",
+        title: "Koncepcja bez uzgodnionego programu",
+        description: "Brak briefu może skutkować przeprojektowaniem po pierwszej wersji PAB.",
+        level: "medium",
+        mitigation: "Zorganizować spotkanie programowe z inwestorem przed PZT.",
+        category: "coordination",
+      },
+    ],
+    nextSteps: [
+      {
+        id: "ns-brief-1",
+        order: 1,
+        title: "Zebrać wytyczne inwestora / brief projektowy",
+        description:
+          "Program funkcjonalny, standard, harmonogram i wymagania specjalne — przed rozwinięciem koncepcji.",
+        badge: "BRIEF",
+      },
+    ],
+    projectStageImpact: 4,
+    confidenceLevel: "medium",
+    clarificationTriggers: [
+      {
+        id: "cq-investor-brief",
+        question:
+          "Czy zebrano wytyczne inwestora / brief projektowy (program funkcjonalny, standard, harmonogram) jako dokument wejściowy do koncepcji?",
+        reason:
+          "Brief stanowi podstawę prac koncepcyjnych — bez niego koordynator nie może rzetelnie zaplanować PZT/PAB.",
+        options: ["Tak — kompletny", "Częściowo", "Nie — do zebrania", "Nie wiem"],
+        requiredForFinalPlan: false,
+        priority: "important",
+        relatedArea: "documentation",
+        triggerReason: "investor_brief_missing",
+      },
+    ],
+  },
+  {
+    id: "rule-warehouse-industrial",
+    title: "Hala magazynowa / logistyka",
+    condition: (s) =>
+      projectType(s) === "warehouse" ||
+      projectType(s) === "warehouse_service_hall" ||
+      hasSignal(s, "buildingCategory", "warehouse") ||
+      hasSignal(s, "buildingCategory", "warehouse_service_hall"),
+    professionalRecommendation:
+      "Dla hal magazynowych kluczowe są: wysokość składowania, obciążenie pożarowe i posadzki, plac manewrowy TIR, geotechnika pod płytą oraz brief logistyczny inwestora.",
+    legalBasis: [KNOWLEDGE_BASE_LEGAL[1]],
+    requiredDocuments: [],
+    requiredSpecialists: [],
+    risks: [
+      {
+        id: "r-warehouse-fire",
+        title: "Niedoszacowanie obciążenia pożarowego magazynu",
+        description: "Wysokość regałów i klasa towaru wpływają na PPOŻ i drogi pożarowe.",
+        level: "high",
+        mitigation: "Wczesna konsultacja PPOŻ z briefem magazynowym.",
+        category: "fire",
+      },
+    ],
+    nextSteps: [
+      {
+        id: "ns-wh-1",
+        order: 1,
+        title: "Ustalić parametry magazynowania i placu manewrowego",
+        description: "Wysokość składowania, obciążenia posadzki, TIR, drogi pożarowe.",
+        badge: "LOG",
+      },
+    ],
+    projectStageImpact: 5,
+    confidenceLevel: "high",
+    clarificationTriggers: [
+      {
+        id: "cq-storage-height",
+        question:
+          "Jaka jest planowana wysokość składowania (regały) i klasa magazynowego obciążenia pożarowego?",
+        reason: "Parametry determinują kubaturę, PPOŻ i rozwiązania posadzki.",
+        options: ["Ustalone", "Częściowo", "Nie — do ustalenia", "Nie wiem"],
+        requiredForFinalPlan: false,
+        priority: "important",
+        relatedArea: "technical",
+        triggerReason: "warehouse_storage",
+      },
+      {
+        id: "cq-floor-slab",
+        question:
+          "Czy znane są wymagane obciążenia posadzki / płyty fundamentowej (wózki, regały, strefy)?",
+        reason: "Obciążenia wpływają na geotechnikę, konstrukcję płyty i koszt fundamentów.",
+        options: ["Tak", "Częściowo", "Nie", "Nie wiem"],
+        requiredForFinalPlan: false,
+        priority: "important",
+        relatedArea: "technical",
+        triggerReason: "warehouse_floor",
+      },
+    ],
+  },
+  {
+    id: "rule-factory-technology",
+    title: "Fabryka — brief technologiczny i środowisko",
+    condition: (s) =>
+      projectType(s) === "factory_industrial" ||
+      projectType(s) === "production_hall",
+    professionalRecommendation:
+      "Przy fabrykach i halach produkcyjnych wymagany jest szczegółowy brief technologiczny, ocena mediów procesowych, PPOŻ, ewentualna decyzja środowiskowa oraz geotechnika z uwzględnieniem zanieczyszczeń.",
+    legalBasis: [KNOWLEDGE_BASE_LEGAL[5], KNOWLEDGE_BASE_LEGAL[6]],
+    requiredDocuments: [
+      doc(
+        "technology_brief",
+        "Brief technologiczny / wytyczne procesowe",
+        "TECH",
+        "missing",
+        "critical",
+        "Bez briefu technologicznego nie można rzetelnie zaplanować układu hali i mediów."
+      ),
+    ],
+    requiredSpecialists: [],
+    risks: [
+      {
+        id: "r-tech-brief",
+        title: "Brak briefu technologicznego",
+        description: "Linia produkcyjna i media procesowe muszą być znane przed koncepcją.",
+        level: "high",
+        mitigation: "Zaprosić technologa / inwestora do warsztatu programowego.",
+        category: "technology",
+      },
+    ],
+    nextSteps: [
+      {
+        id: "ns-factory-1",
+        order: 1,
+        title: "Zebrać brief technologiczny i wymagania procesowe",
+        description: "Linie, media, substancje, BHP — przed koncepcją architektoniczną.",
+        badge: "TECH",
+      },
+    ],
+    projectStageImpact: 6,
+    confidenceLevel: "high",
+    clarificationTriggers: [
+      {
+        id: "cq-technology-brief",
+        question:
+          "Czy dysponujecie szczegółowym briefem technologicznym (układ linii, media procesowe, substancje niebezpieczne)?",
+        reason:
+          "Brief technologiczny jest dokumentem wejściowym do koncepcji hali — brak szczegółów blokuje PZT/PAB.",
+        options: ["Tak — kompletny", "Częściowo", "Nie — do opracowania", "Nie wiem"],
+        requiredForFinalPlan: true,
+        priority: "critical",
+        relatedArea: "technical",
+        triggerReason: "factory_technology_brief",
+      },
+      {
+        id: "cq-hazardous-substances",
+        question:
+          "Czy w procesie występują substancje niebezpieczne wymagające dodatkowych rozwiązań BHP/PPOŻ (do weryfikacji)?",
+        reason: "Substancje mogą wymagać dodatkowych uzgodnień i wpływają na układ stref.",
+        options: ["Tak", "Nie", "Do weryfikacji", "Nie wiem"],
+        requiredForFinalPlan: false,
+        priority: "important",
+        relatedArea: "constraints",
+        triggerReason: "factory_hazmat",
+      },
+      {
+        id: "cq-environmental-decision",
+        question:
+          "Czy przeprowadzono wstępną ocenę konieczności decyzji o środowiskowych uwarunkowaniach (do weryfikacji prawnej)?",
+        reason: "Inwestycje przemysłowe mogą wymagać procedury środowiskowej — wpływa na harmonogram.",
+        options: ["Tak — wymagana", "Nie — wykluczona", "Do weryfikacji", "Nie wiem"],
+        requiredForFinalPlan: false,
+        priority: "important",
+        relatedArea: "formal_path",
+        triggerReason: "factory_environment",
+      },
+    ],
+  },
+  {
+    id: "rule-change-of-use",
+    title: "Zmiana sposobu użytkowania",
+    condition: (s) =>
+      hasSignal(s, "changeOfUse", true) ||
+      projectType(s) === "change_of_use",
+    professionalRecommendation:
+      "Przy zmianie użytkowania należy zweryfikować zgodność nowej funkcji z MPZP/WZ, przeprowadzić inwentaryzację oraz dostosować PPOŻ i instalacje do nowego programu.",
+    legalBasis: [KNOWLEDGE_BASE_LEGAL[1]],
+    requiredDocuments: [
+      doc(
+        "use_change_assessment",
+        "Ocena zmiany sposobu użytkowania",
+        "ZSU",
+        "missing",
+        "high",
+        "Wymagana weryfikacja formalna i techniczna nowej funkcji."
+      ),
+    ],
+    requiredSpecialists: [],
+    risks: [
+      {
+        id: "r-use-change-planning",
+        title: "Niezgodność nowej funkcji z planem",
+        description: "Zmiana z magazynu na usługi może wymagać innego przeznaczenia w MPZP.",
+        level: "high",
+        mitigation: "Weryfikacja wypisu z MPZP i konsultacja w organie AAB.",
+        category: "planning",
+      },
+    ],
+    nextSteps: [
+      {
+        id: "ns-zsu-1",
+        order: 1,
+        title: "Zweryfikować dopuszczalność nowej funkcji w MPZP/WZ",
+        description: "Porównanie obecnego i planowanego sposobu użytkowania.",
+      },
+    ],
+    projectStageImpact: 4,
+    confidenceLevel: "medium",
     clarificationTriggers: [],
   },
 ];

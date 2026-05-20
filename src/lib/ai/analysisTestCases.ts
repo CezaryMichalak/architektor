@@ -1,4 +1,5 @@
 import { runHybridFinalAnalysis, runPreliminaryAnalysis } from "../hybridAnalysis";
+import { runClarificationTestsInConsole } from "./clarificationTestCases";
 
 export const ANALYSIS_TEST_CASES = [
   {
@@ -61,6 +62,10 @@ export async function runHybridTestCase(id: string): Promise<void> {
 }
 
 if (typeof window !== "undefined") {
-  (window as unknown as { architektorTests?: typeof runAnalysisTestCasesInConsole }).architektorTests =
-    runAnalysisTestCasesInConsole;
+  const w = window as unknown as {
+    architektorTests?: typeof runAnalysisTestCasesInConsole;
+    runClarificationTests?: typeof runClarificationTestsInConsole;
+  };
+  w.architektorTests = runAnalysisTestCasesInConsole;
+  w.runClarificationTests = runClarificationTestsInConsole;
 }

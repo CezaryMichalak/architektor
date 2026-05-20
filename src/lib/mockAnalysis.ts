@@ -1,4 +1,7 @@
 import { ARCHITECTURE_RULES } from "../data/architectureRules";
+import { evaluateGeotechnicalNeeds } from "../data/geotechnicalRules";
+import { evaluateInvestorBrief } from "../data/investorBriefRules";
+import { getProjectTypeEntry } from "../data/projectTypeMatrix";
 import { SPECIALIST_MATRIX } from "../data/specialistMatrix";
 import type {
   ActionStep,
@@ -12,8 +15,13 @@ import type {
   StructuredProjectFields,
 } from "../types/architecture";
 import { DISCLAIMER_PL } from "../types/architecture";
+import type { ProjectTypeKey } from "../types/projectType";
 import { STAGE_LABELS } from "../data/knowledgeBase";
 import { calculateProjectProgress } from "./calculateProjectProgress";
+import { describeActionStep } from "./actionDescriptions";
+import { buildTypeSpecificActionPlan } from "./buildTypeActionPlan";
+import { classifyProjectType } from "./classifyProjectType";
+import { deduplicateActions } from "./deduplicateActions";
 import { extractProjectSignals, signalsToDetectedLabels } from "./extractProjectSignals";
 import { generateClarifyingQuestions } from "./generateClarifyingQuestions";
 
@@ -104,25 +112,34 @@ function dedupeDocuments(docs: RequiredDocument[]): RequiredDocument[] {
   });
 }
 
-function selectSpecialists(signals: ProjectSignal[]): SpecialistRecommendation[] {
-  const ids = new Set<string>(["architect"]);
-  const cat = String(signals.find((s) => s.key === "buildingCategory")?.value ?? "");
+function getProjectTypeKey(signals: ProjectSignal[]): ProjectTypeKey {
+  const subtype = signals.find((s) => s.key === "projectSubtype")?.value;
+  return (subtype ? String(subtype) : "unknown") as ProjectTypeKey;
+}
+
+function selectSpecialists(signals: ProjectSignal[], prompt: string): SpecialistRecommendation[] {
+  const pt = getProjectTypeKey(signals);
+  const entry = getProjectTypeEntry(pt);
+  const classification = classifyProjectType(signals, prompt);
+  const ids = new Set<string>(["architect", ...entry.typicalSpecialists]);
+
   const mdcp = signals.find((s) => s.key === "hasMdcp")?.value;
-  const existing = signals.find((s) => s.key === "buildingType")?.value === "existing";
+  const existing =
+    signals.find((s) => s.key === "buildingType")?.value === "existing" ||
+    classification.isExtension;
   const conservation = signals.find((s) => s.key === "hasConservationConstraint")?.value === true;
   const env = signals.find((s) => s.key === "hasEnvironmentalConstraint")?.value === true;
+  const hasGeo = signals.find((s) => s.key === "hasGeotechnicalOpinion")?.value === true;
 
   if (mdcp === false) ids.add("surveyor");
-  if (existing || cat !== "single_family") ids.add("structural");
-  if (cat === "multi_family" || cat === "services" || cat === "public") {
-    ids.add("installations");
-    ids.add("fire");
-    ids.add("accessibility");
-  } else if (cat !== "single_family") {
-    ids.add("installations");
+  if (!hasGeo && (classification.isNewBuilding || classification.isIndustrial || classification.isExtension)) {
+    ids.add("geotechnical");
   }
+  if (existing) ids.add("structural");
   if (conservation) ids.add("conservation");
-  if (env) ids.add("environment");
+  if (env || classification.isIndustrial) ids.add("environment");
+  if (pt === "warehouse" || pt === "warehouse_service_hall") ids.add("traffic");
+  if (pt === "factory_industrial" || pt === "production_hall") ids.add("technology");
 
   return SPECIALIST_MATRIX.filter((s) => ids.has(s.id));
 }
@@ -135,9 +152,20 @@ function computeConfidence(signals: ProjectSignal[]): "low" | "medium" | "high" 
   return "high";
 }
 
+function sanitizeActionDescriptions(actions: ActionStep[]): ActionStep[] {
+  return actions.map((a) => ({
+    ...a,
+    description:
+      a.description.trim() === a.title.trim()
+        ? describeActionStep(a.title)
+        : a.description,
+  }));
+}
+
 function buildUncertainInputs(signals: ProjectSignal[]): string[] {
   const uncertain: string[] = [];
-  if (signals.find((s) => s.key === "planningStatus")?.value === "unknown") {
+  const planning = signals.find((s) => s.key === "planningStatus")?.value;
+  if (planning === "unknown") {
     uncertain.push("Status planistyczny terenu (MPZP / WZ / inne ustalenia)");
   }
   if (signals.find((s) => s.key === "formalPathUnclear")?.value === true) {
@@ -146,23 +174,15 @@ function buildUncertainInputs(signals: ProjectSignal[]): string[] {
   if (!signals.find((s) => s.key === "buildingCategory")) {
     uncertain.push("Kategoria i funkcja obiektu");
   }
-  const avoidWz = signals.find((s) => s.key === "avoidWzPrimary")?.value === true;
-  if (avoidWz) {
-    uncertain.push("Ścieżka WZ — nie rekomendowana jako pierwsza przy obowiązującym MPZP");
-  }
   return uncertain;
 }
 
 function projectTypeLabel(signals: ProjectSignal[]): string {
-  const cat = signals.find((s) => s.key === "buildingCategory")?.value;
+  const label = signals.find((s) => s.key === "projectTypeLabel")?.value;
+  if (label) return String(label);
+  const pt = getProjectTypeKey(signals);
+  if (pt !== "unknown") return getProjectTypeEntry(pt).labelPl;
   const inv = signals.find((s) => s.key === "investmentType")?.value;
-  const map: Record<string, string> = {
-    single_family: "Budynek mieszkalny jednorodzinny",
-    multi_family: "Budynek mieszkalny wielorodzinny",
-    services: "Budynek usługowy",
-    public: "Obiekt użyteczności publicznej",
-  };
-  if (cat && map[String(cat)]) return map[String(cat)];
   if (inv) return String(inv);
   return "Inwestycja budowlana — typ do doprecyzowania";
 }
@@ -185,18 +205,46 @@ export function mockAnalysis(
   let actions: ActionStep[] = [];
   let risks: RiskItem[] = [];
   let legal: LegalBasis[] = [];
-  let order = 1;
+
+  const pt = getProjectTypeKey(signals);
+  const classification = classifyProjectType(signals, prompt);
+
+  const geo = evaluateGeotechnicalNeeds({
+    projectType: pt,
+    isNewBuilding: classification.isNewBuilding,
+    isIndustrial: classification.isIndustrial,
+    isExtension: classification.isExtension,
+    hasGeotechnicalOpinion: signals.some(
+      (s) => s.key === "hasGeotechnicalOpinion" && s.value === true
+    ),
+  });
+  documents.push(...geo.documents);
+  risks.push(...geo.risks);
+  legal.push(...geo.legalBasis);
+
+  const brief = evaluateInvestorBrief(
+    pt,
+    signals.some((s) => s.key === "hasInvestorBrief" && s.value === true),
+    signals.some((s) => s.key === "investorBriefStage" && s.value === "partial")
+  );
+  if (brief.document) documents.push(brief.document);
+  legal.push(...brief.legalBasis);
 
   for (const rule of matchedRules) {
     if (avoidWzPrimary && rule.id === "rule-no-mpzp-wz") continue;
 
     documents.push(...rule.requiredDocuments);
     for (const step of rule.nextSteps) {
-      actions.push({ ...step, order: order++ });
+      actions.push({ ...step });
     }
     risks.push(...rule.risks);
     legal.push(...rule.legalBasis);
   }
+
+  const typeActions = buildTypeSpecificActionPlan(signals, prompt, 1);
+  actions = sanitizeActionDescriptions(
+    deduplicateActions([...typeActions, ...actions], pt)
+  );
 
   if (avoidWzPrimary) {
     actions = actions.filter(
@@ -209,7 +257,7 @@ export function mockAnalysis(
   risks = risks.filter((r, i, arr) => arr.findIndex((x) => x.id === r.id) === i);
   legal = legal.filter((l, i, arr) => arr.findIndex((x) => x.id === l.id) === i);
 
-  const specialists = selectSpecialists(signals);
+  const specialists = selectSpecialists(signals, prompt);
   const advancement = calculateProjectProgress(signals);
   const stageKey = String(signals.find((s) => s.key === "projectStage")?.value ?? "preliminary");
   const confidence = computeConfidence(signals);
@@ -220,13 +268,19 @@ export function mockAnalysis(
       ? `Priorytet: ${documents[0].name}`
       : "Uzupełnij dane wejściowe i zweryfikuj status planistyczny działki.");
 
+  const uncertainInputs = buildUncertainInputs(signals);
+  if (pt === "unknown") {
+    uncertainInputs.push("Kategoria i funkcja obiektu — wymaga krytycznego doprecyzowania");
+  }
+
   return {
     projectType: projectTypeLabel(signals),
+    projectSubtype: pt !== "unknown" ? pt : undefined,
     projectStage: STAGE_LABELS[stageKey] ?? STAGE_LABELS.unknown,
     advancementPercentage: advancement,
     confidenceLevel: confidence,
     detectedInputs: signalsToDetectedLabels(signals),
-    uncertainInputs: buildUncertainInputs(signals),
+    uncertainInputs,
     missingDocuments: documents,
     recommendedActions: actions,
     specialists,
@@ -235,6 +289,9 @@ export function mockAnalysis(
     clarifyingQuestionsAsked: questionsAsked,
     immediateNextStep: immediate,
     disclaimer: DISCLAIMER_PL,
+    investorBriefStage: brief.status,
+    geotechnicalStatus: geo.status,
+    investorBriefChecklist: brief.checklist,
   };
 }
 
@@ -243,6 +300,6 @@ export function preliminaryAnalysis(
   structuredFields?: StructuredProjectFields
 ) {
   const signals = extractProjectSignals(prompt, structuredFields);
-  const questions = generateClarifyingQuestions(signals);
+  const questions = generateClarifyingQuestions(signals, prompt);
   return { signals, questions };
 }
