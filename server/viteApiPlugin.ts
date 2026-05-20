@@ -5,7 +5,7 @@ import {
   missingUserPromptFailure,
   serverExceptionFailure,
   type AnalyzeApiResult,
-} from "./analyzeHandler";
+} from "../api/_lib/analyzeHandler.js";
 
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
@@ -53,22 +53,15 @@ export function architektorApiPlugin(): Plugin {
         try {
           const body = (await readJsonBody(req)) as { userPrompt?: string };
           if (!body.userPrompt) {
-            sendJson(res, 400, missingUserPromptFailure());
+            sendJson(res, 200, missingUserPromptFailure());
             return;
           }
 
           const result = await handleAnalyzeRequest(body.userPrompt);
-          if (!result.ok) {
-            const status =
-              result.fallbackReason === "missing_openai_api_key" ? 200 : 502;
-            sendJson(res, status, result);
-            return;
-          }
-
           sendJson(res, 200, result);
         } catch (err) {
           const message = err instanceof Error ? err.message : "Błąd serwera";
-          sendJson(res, 500, serverExceptionFailure(message));
+          sendJson(res, 200, serverExceptionFailure(message));
         }
       });
     },

@@ -45,6 +45,10 @@ Endpoint **`POST /api/analyze`** jest obsługiwany przez funkcję serverless `ap
 
 **Test produkcji:** po deployu uruchom analizę końcową i w DevTools → Network sprawdź `POST /api/analyze` — status **200**, w odpowiedzi `ok: true` i brak regułowego fallbacku (`usedFallback: false` w meta analizy). Przy braku klucza API: `useFallback: true`, `fallbackReason: "missing_openai_api_key"`.
 
+**Logi Vercel (Functions → `/api/analyze`):** szukaj prefiksu `[api/analyze]` — `request received`, `OPENAI_API_KEY present: true/false`, `request body parsed`, `AI pipeline started/succeeded/failed`, `returning fallback response`. Klucz API nigdy nie jest logowany.
+
+**Oczekiwane kody HTTP:** zawsze **200** dla POST (sukces AI lub kontrolowany fallback). Wyjątek: **405** dla metod innych niż POST. Surowe **500** nie powinny występować przy typowych błędach (brak klucza, błąd OpenAI, wyjątek handlera).
+
 **Dev lokalny:** `npm run dev` (np. `--port 3002`) — ten sam endpoint przez plugin Vite w `server/viteApiPlugin.ts`; klucz z `.env.local`.
 
 ## Przykładowy scenariusz testowy

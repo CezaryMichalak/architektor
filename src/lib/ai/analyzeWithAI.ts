@@ -28,6 +28,7 @@ interface AnalyzeApiJson {
   useFallback?: boolean;
   analysis?: unknown;
   error?: string;
+  message?: string;
   errorCode?: AnalysisErrorCode;
   fallbackReason?: string;
   details?: string;
@@ -85,7 +86,7 @@ export async function analyzeWithAI(
       }
       return {
         ok: false,
-        error: data.error ?? `Błąd API (${res.status})`,
+        error: data.error ?? data.message ?? `Błąd API (${res.status})`,
         errorCode: data.errorCode ?? (res.status === 404 ? "server_unavailable" : "ai_request_failed"),
         fallbackReason: data.fallbackReason,
         statusCode: res.status,

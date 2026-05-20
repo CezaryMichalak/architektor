@@ -1,13 +1,24 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import {
-  handleAnalyzeRequest,
-  missingUserPromptFailure,
-  serverExceptionFailure,
-  type AnalyzeApiResult,
-} from "../server/analyzeHandler";
+import type { AnalyzeApiResult } from "./_lib/analyzeHandler.js";
+
+const CRASH_FALLBACK: AnalyzeApiResult = {
+  ok: false,
+  useFallback: true,
+  error: "Błąd serwera",
+  message: "Błąd serwera",
+  errorCode: "server_unavailable",
+  fallbackReason: "server_exception",
+};
 
 function sendJson(res: VercelResponse, status: number, body: AnalyzeApiResult): void {
   res.status(status).json(body);
+}
+
+function parseBody(req: VercelRequest): { userPrompt?: string } {
+  if (typeof req.body === "string") {
+    return JSON.parse(req.body) as { userPrompt?: string };
+  }
+  return (req.body ?? {}) as { userPrompt?: string };
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
@@ -24,35 +35,59 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     return;
   }
 
-  console.log("[architektor-api] Vercel /api/analyze request received");
-  console.log(
-    "[architektor-api] API key present:",
-    Boolean(process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY.length > 10)
-  );
+  console.log("[api/analyze] request received");
+  console.log("[api/analyze] method POST");
 
   try {
-    const body = (typeof req.body === "string" ? JSON.parse(req.body) : req.body) as {
-      userPrompt?: string;
-    };
+    const {
+      handleAnalyzeRequest,
+      missingUserPromptFailure,
+      serverExceptionFailure,
+    } = await import("./_lib/analyzeHandler.js");
+
+    const keyPresent = Boolean(
+      process.env.OPENAI_API_KEY &&
+        process.env.OPENAI_API_KEY !== "your-openai-api-key-here" &&
+        process.env.OPENAI_API_KEY.length > 10
+    );
+    console.log("[api/analyze] OPENAI_API_KEY present:", keyPresent);
+
+    let body: { userPrompt?: string };
+    try {
+      body = parseBody(req);
+      console.log("[api/analyze] request body parsed");
+    } catch (parseErr) {
+      const message = parseErr instanceof Error ? parseErr.message : "Invalid JSON body";
+      console.log("[api/analyze] request body parse failed:", message);
+      sendJson(res, 200, serverExceptionFailure(message));
+      return;
+    }
 
     if (!body?.userPrompt) {
-      sendJson(res, 400, missingUserPromptFailure());
+      console.log("[api/analyze] returning fallback response — missing userPrompt");
+      sendJson(res, 200, missingUserPromptFailure());
       return;
     }
 
     const result = await handleAnalyzeRequest(body.userPrompt);
 
     if (!result.ok) {
-      const status =
-        result.fallbackReason === "missing_openai_api_key" ? 200 : 502;
-      sendJson(res, status, result);
+      sendJson(res, 200, result);
       return;
     }
 
     sendJson(res, 200, result);
   } catch (err) {
+    const name = err instanceof Error ? err.name : "Error";
     const message = err instanceof Error ? err.message : "Błąd serwera";
-    console.log("[architektor-api] server exception:", message);
-    sendJson(res, 500, serverExceptionFailure(message));
+    console.log("[api/analyze] AI pipeline failed |", name, message);
+    console.log("[api/analyze] returning fallback response");
+
+    try {
+      const { serverExceptionFailure } = await import("./_lib/analyzeHandler.js");
+      sendJson(res, 200, serverExceptionFailure(message));
+    } catch {
+      sendJson(res, 200, { ...CRASH_FALLBACK, error: message, message, details: message });
+    }
   }
 }
