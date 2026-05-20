@@ -147,7 +147,8 @@ export default function App() {
       </main>
 
       <footer className="mt-12 border-t border-border py-6 text-center text-xs text-slate-muted">
-        Architektor · Professional project workflow assistant for architects.
+        <p>Architektor by Michalak Labs</p>
+        <p className="mt-1 text-slate-muted/80">Professional workflow tools powered by AI.</p>
       </footer>
     </div>
   );

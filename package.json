@@ -2,7 +2,7 @@
   "name": "architektor",
   "private": true,
   "version": "1.0.0",
-  "description": "Architektor — Professional project workflow assistant for architects.",
+  "description": "Architektor by Michalak Labs — professional project workflow assistant for architects in Poland.",
   "type": "module",
   "scripts": {
     "dev": "vite",

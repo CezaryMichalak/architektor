@@ -6,7 +6,8 @@ import type { ProjectAnalysis, ConfidenceLevel } from "../types/architecture";
 const CHARSET_TEST =
   "Test polskich znaków: ą ć ę ł ń ó ś ź ż Ą Ć Ę Ł Ń Ó Ś Ź Ż";
 
-const FOOTER_TEXT = "Architektor – analiza pomocnicza, wymaga weryfikacji";
+const FOOTER_TEXT =
+  "Architektor by Michalak Labs – analiza pomocnicza, wymaga weryfikacji";
 
 const confidenceLabels: Record<ConfidenceLevel, string> = {
   low: "Niska",

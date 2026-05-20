@@ -1,77 +1,151 @@
 # Architektor
 
-**Professional project workflow assistant for architects.**
+**Architektor** is a professional project workflow assistant for architects in Poland. It analyses early-stage architectural project descriptions, identifies missing input data, asks clarification questions, recommends the sequence of design and formal actions, suggests consultants, highlights risks, and generates a PDF project process report.
 
-*Asystent procesu projektowego dla architektów.*
+*Created by Michalak Labs.*
 
-Architektor to profesjonalna aplikacja webowa MVP wspierająca architektów w Polsce w organizacji procesu projektowego. Analizuje opisy inwestycji w języku naturalnym (oraz opcjonalne pola strukturalne), zadaje pytania doprecyzowujące i generuje uporządkowany plan działań — na podstawie **regułowego silnika analizy** (bez zewnętrznego API AI).
+## What Architektor does
 
-## Funkcje
+- analyses natural-language project descriptions,
+- detects project type and stage,
+- identifies missing input documents,
+- asks clarification questions,
+- separates real project advancement from analysis and data completeness,
+- recommends project workflow steps,
+- suggests consultants and discipline designers,
+- highlights formal, technical and coordination risks,
+- provides general legal and planning reference points,
+- exports a professional PDF report.
 
-- Ekran startowy z przykładowymi opisami projektów
-- Wprowadzanie opisu tekstowego i pól strukturalnych
-- Analiza wstępna → doprecyzowanie (3–8 pytań) → plan końcowy
-- Raport: status projektu, dokumenty, sekwencja działań, konsultanci, podstawy prawne, ryzyka
-- Logika planistyczna: MPZP vs WZ, MDCP, etapy dokumentacji, obiekty istniejące, ograniczenia
+## Key features
 
-## Stos technologiczny
+- AI-powered analysis,
+- rule-based fallback,
+- clarification flow,
+- project advancement indicator,
+- analysis completeness indicator,
+- professional PDF export,
+- project-type-specific logic,
+- geotechnics, investor brief, MPZP and MDCP handling,
+- Vercel deployment,
+- server-side API endpoint for OpenAI.
 
-- React 19 + TypeScript + Vite 6
-- Tailwind CSS 4
+## Important disclaimer
 
-## Uruchomienie
+Architektor is an organisational and professional workflow support tool. It does not provide binding legal advice and does not replace the architect’s professional judgement, the local architectural and construction administration authority, legal counsel or current legal verification. All outputs should be verified against current regulations, local planning documents, administrative practice and project-specific conditions.
+
+## Tech stack
+
+- React
+- Vite
+- TypeScript
+- OpenAI API
+- Vercel serverless API route
+- pdfmake (PDF export)
+- GitHub + Vercel deployment
+
+## Local development
+
+1. Clone the repository.
+2. Install dependencies:
 
 ```bash
 npm install
-npm run dev
 ```
 
-Aplikacja domyślnie: [http://localhost:5173](http://localhost:5173)
-
-## Budowanie produkcyjne
+3. Create `.env.local` (copy from `.env.local.example`):
 
 ```bash
-npm run build
-npm run preview
+OPENAI_API_KEY=your_openai_api_key_here
 ```
 
-## Wdrożenie na Vercel (analiza AI)
+4. Start the development server:
 
-Endpoint **`POST /api/analyze`** jest obsługiwany przez funkcję serverless `api/analyze.ts` (wspólna logika z dev w `server/analyzeHandler.ts`). Klucz OpenAI **nigdy** nie trafia do frontendu.
-
-1. W panelu Vercel → **Settings → Environment Variables** ustaw `OPENAI_API_KEY` (oraz opcjonalnie `OPENAI_MODEL`, domyślnie `gpt-4o-mini`).
-2. Po zmianie zmiennych wykonaj **Redeploy** projektu.
-3. W produkcji frontend nadal woła względny URL `/api/analyze` (bez localhost).
-
-**Test produkcji:** po deployu uruchom analizę końcową i w DevTools → Network sprawdź `POST /api/analyze` — status **200**, w odpowiedzi `ok: true` i brak regułowego fallbacku (`usedFallback: false` w meta analizy). Przy braku klucza API: `useFallback: true`, `fallbackReason: "missing_openai_api_key"`.
-
-**Logi Vercel (Functions → `/api/analyze`):** szukaj prefiksu `[api/analyze]` — `request received`, `OPENAI_API_KEY present: true/false`, `request body parsed`, `AI pipeline started/succeeded/failed`, `returning fallback response`. Klucz API nigdy nie jest logowany.
-
-**Oczekiwane kody HTTP:** zawsze **200** dla POST (sukces AI lub kontrolowany fallback). Wyjątek: **405** dla metod innych niż POST. Surowe **500** nie powinny występować przy typowych błędach (brak klucza, błąd OpenAI, wyjątek handlera).
-
-**Dev lokalny:** `npm run dev` (np. `--port 3002`) — ten sam endpoint przez plugin Vite w `server/viteApiPlugin.ts`; klucz z `.env.local`.
-
-## Przykładowy scenariusz testowy
-
-**Wejście:**  
-`Dom jednorodzinny, jest MPZP, nie mam jeszcze wypisu i wyrysu, brak mapy do celów projektowych.`
-
-**Oczekiwane:** wykrycie domu jednorodzinnego, MPZP, brak wypisu i MDCP; brak rekomendacji WZ jako ścieżki pierwszej; rekomendacja wypisu z MPZP i MDCP; zaawansowanie ok. 25–35%.
-
-## Struktura projektu
-
-```
-src/
-  components/     # UI (StartScreen, ProjectInput, AnalysisDashboard, …)
-  data/           # architectureRules, knowledgeBase, specialistMatrix
-  lib/            # extractProjectSignals, mockAnalysis, …
-  types/          # architecture.ts
+```bash
+npm run dev -- --port 3002
 ```
 
-## Zastrzeżenie
+5. Open [http://localhost:3002](http://localhost:3002)
 
-Analiza ma charakter organizacyjno-projektowy pomocniczy. Wymagania należy potwierdzić w aktualnych przepisach, lokalnej praktyce organu administracji architektoniczno-budowlanej oraz na podstawie zawodowej oceny projektanta.
+**Do not commit `.env.local`.** Only `.env.local.example` belongs in the repository (with a placeholder key).
+
+## Environment variables
+
+| Variable | Description |
+|----------|-------------|
+| `OPENAI_API_KEY` | Server-side key used by `/api/analyze` to call the AI model. |
+
+The key must **never** be exposed to frontend code. Configure it locally in `.env.local` and in **Vercel → Project Settings → Environment Variables**.
+
+Optional: `OPENAI_MODEL` (default: `gpt-4o-mini`).
+
+## Deployment
+
+Deploy on Vercel:
+
+1. Import the GitHub repository into Vercel.
+2. Framework preset: **Vite**.
+3. Build command: `npm run build`.
+4. Output directory: `dist`.
+5. Add environment variable `OPENAI_API_KEY`.
+6. Redeploy after adding or changing environment variables.
+
+Production AI endpoint: **`POST /api/analyze`**
+
+## Project workflow
+
+1. User enters a project description.
+2. App performs preliminary signal extraction.
+3. App asks clarification questions if needed.
+4. AI generates project workflow analysis.
+5. Domain rules validate and enrich the output.
+6. App shows project status, missing data, consultants, risks and next steps.
+7. User can export the report to PDF.
+
+## Example prompts
+
+**Example 1**
+
+Projekt dotyczy budowy nowej hali magazynowo-usługowej z częścią biurowo-socjalną. Główną funkcją będzie magazynowanie towarów na regałach wysokiego składowania oraz obsługa dostaw samochodami ciężarowymi. Działka jest objęta MPZP, ale brak wypisu i wyrysu, brak MDCP, brak badań geotechnicznych i brak pełnego briefu technologiczno-logistycznego.
+
+**Example 2**
+
+Projekt dotyczy przebudowy i rozbudowy istniejącego budynku usługowego na potrzeby przychodni rehabilitacyjnej. Brak aktualnej inwentaryzacji, brak oceny konstrukcji, brak MDCP, brak rozpoznania geotechnicznego i nieznane warunki przyłączenia mediów.
+
+**Example 3**
+
+Projekt dotyczy budowy domu jednorodzinnego wolnostojącego z garażem dwustanowiskowym. Działka jest objęta MPZP, inwestor posiada wypis i wyrys, ale nie zamówiono MDCP i nie wykonano badań geotechnicznych.
+
+## Current status
+
+**MVP / v1**
+
+Implemented:
+
+- AI analysis,
+- fallback rules,
+- clarification questions,
+- PDF export,
+- Vercel deployment,
+- professional project workflow reporting.
+
+## Roadmap
+
+- improve project-type-specific rule matrices,
+- expand legal and planning knowledge base,
+- add saved projects,
+- add user accounts,
+- add editable reports,
+- add custom office templates,
+- add richer consultant matrices,
+- add project history and comparison.
+
+## About Michalak Labs
+
+Michalak Labs is an independent AI-focused web application studio building practical tools for professionals. The studio focuses on workflow automation, decision support, intelligent reporting and modern web applications powered by new technologies.
+
+*Michalak Labs to autorskie studio tworzące aplikacje webowe oparte na nowych technologiach i AI, wspierające profesjonalistów w automatyzacji pracy, analizie procesów i generowaniu praktycznych raportów.*
 
 ---
 
-© Architektor
+**Architektor by Michalak Labs**
