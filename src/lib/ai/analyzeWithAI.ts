@@ -25,6 +25,7 @@ export interface AnalyzeWithAIResult {
 
 interface AnalyzeApiJson {
   ok?: boolean;
+  useFallback?: boolean;
   analysis?: unknown;
   error?: string;
   errorCode?: AnalysisErrorCode;
@@ -70,10 +71,13 @@ export async function analyzeWithAI(
       };
     }
 
-    if (!res.ok || !data.ok) {
+    const shouldFallback = data.useFallback === true || data.ok === false || !data.ok;
+
+    if (!res.ok || shouldFallback) {
       if (import.meta.env.DEV) {
         console.warn("[architektor-ai] request failed", {
           status: res.status,
+          useFallback: data.useFallback,
           errorCode: data.errorCode,
           fallbackReason: data.fallbackReason,
           error: data.error,

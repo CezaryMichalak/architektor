@@ -35,6 +35,18 @@ npm run build
 npm run preview
 ```
 
+## Wdrożenie na Vercel (analiza AI)
+
+Endpoint **`POST /api/analyze`** jest obsługiwany przez funkcję serverless `api/analyze.ts` (wspólna logika z dev w `server/analyzeHandler.ts`). Klucz OpenAI **nigdy** nie trafia do frontendu.
+
+1. W panelu Vercel → **Settings → Environment Variables** ustaw `OPENAI_API_KEY` (oraz opcjonalnie `OPENAI_MODEL`, domyślnie `gpt-4o-mini`).
+2. Po zmianie zmiennych wykonaj **Redeploy** projektu.
+3. W produkcji frontend nadal woła względny URL `/api/analyze` (bez localhost).
+
+**Test produkcji:** po deployu uruchom analizę końcową i w DevTools → Network sprawdź `POST /api/analyze` — status **200**, w odpowiedzi `ok: true` i brak regułowego fallbacku (`usedFallback: false` w meta analizy). Przy braku klucza API: `useFallback: true`, `fallbackReason: "missing_openai_api_key"`.
+
+**Dev lokalny:** `npm run dev` (np. `--port 3002`) — ten sam endpoint przez plugin Vite w `server/viteApiPlugin.ts`; klucz z `.env.local`.
+
 ## Przykładowy scenariusz testowy
 
 **Wejście:**  
