@@ -4,6 +4,7 @@ interface ProjectStatusCardProps {
   projectType: string;
   projectStage: string;
   advancementPercentage: number;
+  analysisCompletenessPercentage: number;
   confidenceLevel: ConfidenceLevel;
 }
 
@@ -23,6 +24,7 @@ export function ProjectStatusCard({
   projectType,
   projectStage,
   advancementPercentage,
+  analysisCompletenessPercentage,
   confidenceLevel,
 }: ProjectStatusCardProps) {
   return (
@@ -38,16 +40,30 @@ export function ProjectStatusCard({
           <dd className="mt-1 text-base font-medium">{projectStage}</dd>
         </div>
       </dl>
-      <div className="mt-6">
-        <div className="mb-2 flex items-center justify-between text-sm">
-          <span className="font-medium text-slate-muted">Zaawansowanie procesu</span>
-          <span className="font-semibold text-accent-blue">{advancementPercentage}%</span>
+      <div className="mt-6 space-y-4">
+        <div>
+          <div className="mb-2 flex items-center justify-between text-sm">
+            <span className="font-medium text-slate-muted">Zaawansowanie procesu projektowego</span>
+            <span className="font-semibold text-accent-blue">{advancementPercentage}%</span>
+          </div>
+          <div className="h-2.5 overflow-hidden rounded-full bg-border">
+            <div
+              className="h-full rounded-full bg-accent-blue transition-all duration-500"
+              style={{ width: `${advancementPercentage}%` }}
+            />
+          </div>
         </div>
-        <div className="h-2.5 overflow-hidden rounded-full bg-border">
-          <div
-            className="h-full rounded-full bg-accent-blue transition-all duration-500"
-            style={{ width: `${advancementPercentage}%` }}
-          />
+        <div>
+          <div className="mb-2 flex items-center justify-between text-sm">
+            <span className="font-medium text-slate-muted">Kompletność danych do analizy</span>
+            <span className="font-semibold text-accent-green">{analysisCompletenessPercentage}%</span>
+          </div>
+          <div className="h-2.5 overflow-hidden rounded-full bg-border">
+            <div
+              className="h-full rounded-full bg-accent-green transition-all duration-500"
+              style={{ width: `${analysisCompletenessPercentage}%` }}
+            />
+          </div>
         </div>
       </div>
       <div className="mt-4">

@@ -17,6 +17,7 @@ import type {
 import { DISCLAIMER_PL } from "../types/architecture";
 import type { ProjectTypeKey } from "../types/projectType";
 import { STAGE_LABELS } from "../data/knowledgeBase";
+import { calculateAnalysisCompleteness } from "./calculateAnalysisCompleteness";
 import { calculateProjectProgress } from "./calculateProjectProgress";
 import { describeActionStep } from "./actionDescriptions";
 import { buildTypeSpecificActionPlan } from "./buildTypeActionPlan";
@@ -51,6 +52,69 @@ export function applyClarificationAnswers(
         confidence: "high",
       });
     }
+  }
+
+  const excerpt = answerMap.get("cq-mpzp-excerpt");
+  if (excerpt && /tak|posiadam/i.test(excerpt)) {
+    updated.push({
+      key: "hasMpzpExcerpt",
+      label: "Wypis i wyrys MPZP",
+      value: true,
+      source: "clarification",
+      confidence: "high",
+    });
+  }
+
+  const mdcp = answerMap.get("cq-mdcp-status");
+  if (mdcp) {
+    if (/tak/i.test(mdcp)) {
+      updated.push({
+        key: "hasMdcp",
+        label: "MDCP",
+        value: true,
+        source: "clarification",
+        confidence: "high",
+      });
+    } else if (/nie/i.test(mdcp)) {
+      updated.push({
+        key: "hasMdcp",
+        label: "MDCP",
+        value: false,
+        source: "clarification",
+        confidence: "high",
+      });
+    }
+  }
+
+  for (const [qid, key] of [
+    ["cq-storage-height", "warehouseStorageDefined"],
+    ["cq-docks-tir", "warehouseDocksDefined"],
+    ["cq-fire-load-warehouse", "warehouseFireLoadDefined"],
+    ["cq-floor-slab", "warehouseSlabLoadsDefined"],
+    ["cq-stormwater-industrial", "warehouseStormwaterDefined"],
+    ["cq-warehouse-utilities", "warehouseUtilitiesDefined"],
+  ] as const) {
+    const ans = answerMap.get(qid);
+    if (ans && /tak|ustalone|częściowo/i.test(ans)) {
+      updated.push({
+        key,
+        label: "Parametry magazynu",
+        value: true,
+        source: "clarification",
+        confidence: "medium",
+      });
+    }
+  }
+
+  const geo = answerMap.get("cq-geotechnical");
+  if (geo && /tak|posiadam|zlecone|w trakcie/i.test(geo)) {
+    updated.push({
+      key: "hasGeotechnicalOpinion",
+      label: "Opinia geotechniczna",
+      value: true,
+      source: "clarification",
+      confidence: "medium",
+    });
   }
 
   const params = answerMap.get("cq-planning-params");
@@ -259,6 +323,12 @@ export function mockAnalysis(
 
   const specialists = selectSpecialists(signals, prompt);
   const advancement = calculateProjectProgress(signals);
+  const analysisCompleteness = calculateAnalysisCompleteness(
+    signals,
+    prompt,
+    clarificationAnswers,
+    questionsAsked
+  );
   const stageKey = String(signals.find((s) => s.key === "projectStage")?.value ?? "preliminary");
   const confidence = computeConfidence(signals);
 
@@ -278,6 +348,7 @@ export function mockAnalysis(
     projectSubtype: pt !== "unknown" ? pt : undefined,
     projectStage: STAGE_LABELS[stageKey] ?? STAGE_LABELS.unknown,
     advancementPercentage: advancement,
+    analysisCompletenessPercentage: analysisCompleteness,
     confidenceLevel: confidence,
     detectedInputs: signalsToDetectedLabels(signals),
     uncertainInputs,

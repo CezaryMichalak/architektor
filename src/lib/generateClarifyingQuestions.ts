@@ -1,11 +1,24 @@
 import { ARCHITECTURE_RULES } from "../data/architectureRules";
+import {
+  evaluateMissingIntakeGroups,
+  getIntakeGroupPriority,
+  getIntakeQuestionsForMissingGroups,
+  INTAKE_DATA_GROUPS,
+  type IntakeGroupId,
+} from "../data/intakeDataGroups";
 import { getProjectTypeEntry } from "../data/projectTypeMatrix";
-import { classifyProjectType } from "./classifyProjectType";
 import type {
+  ClarificationArea,
   ClarifyingQuestion,
+  ClarifyingQuestionInput,
   ProjectSignal,
+  QuestionImpactArea,
   QuestionPriority,
 } from "../types/architecture";
+import {
+  calculateAnalysisCompleteness,
+  shouldShowClarification,
+} from "./calculateAnalysisCompleteness";
 import type { ProjectTypeKey } from "../types/projectType";
 
 type ComplexityTier = "simple" | "standard" | "complex" | "very_complex";
@@ -16,19 +29,50 @@ const PRIORITY_ORDER: Record<QuestionPriority, number> = {
   optional: 2,
 };
 
+const DEFAULT_IMPACT_BY_PRIORITY: Record<QuestionPriority, number> = {
+  critical: 18,
+  important: 12,
+  optional: 7,
+};
+
+const INTAKE_GROUP_BY_ID = new Map(
+  INTAKE_DATA_GROUPS.map((g) => [g.id, g])
+);
+
+const RELATED_TO_IMPACT: Record<ClarificationArea, QuestionImpactArea> = {
+  planning: "planning",
+  documentation: "documentation",
+  formal_path: "formal_path",
+  specialists: "fire_safety",
+  existing_building: "structure",
+  technical: "utilities",
+  constraints: "environment",
+};
+
+const COMPLEXITY_QUESTION_BOUNDS: Record<
+  ComplexityTier,
+  { min: number; max: number }
+> = {
+  simple: { min: 3, max: 6 },
+  standard: { min: 5, max: 8 },
+  complex: { min: 8, max: 10 },
+  very_complex: { min: 8, max: 12 },
+};
+
 /** Max questions by classified project type (user spec: simple 0–3, residential 3–5, etc.). */
 function maxQuestionsForType(projectType: ProjectTypeKey): number {
   switch (projectType) {
     case "single_family":
-      return 5;
+      return 6;
     case "multi_family":
+      return 9;
     case "service":
     case "office":
     case "retail":
     case "public_utility":
     case "extension_reconstruction":
     case "change_of_use":
-      return 8;
+      return 10;
     case "warehouse":
     case "warehouse_service_hall":
     case "production_hall":
@@ -41,10 +85,10 @@ function maxQuestionsForType(projectType: ProjectTypeKey): number {
 }
 
 const TIER_LIMITS: Record<ComplexityTier, number> = {
-  simple: 3,
-  standard: 6,
-  complex: 8,
-  very_complex: 10,
+  simple: 6,
+  standard: 8,
+  complex: 10,
+  very_complex: 12,
 };
 
 function getSignal(signals: ProjectSignal[], key: string): ProjectSignal | undefined {
@@ -69,13 +113,28 @@ function hasSignal(
   return String(s.value) === String(value);
 }
 
-function makeQuestion(
-  partial: ClarifyingQuestion
-): ClarifyingQuestion {
+function intakeGroupPriorityFromTrigger(triggerReason: string): number {
+  const match = triggerReason.match(/^group:([^:]+)/);
+  if (!match) return 500;
+  const group = INTAKE_GROUP_BY_ID.get(match[1] as IntakeGroupId);
+  return group ? getIntakeGroupPriority(group) : 500;
+}
+
+function makeQuestion(partial: ClarifyingQuestionInput): ClarifyingQuestion {
+  const priority = partial.priority ?? "important";
+  const relatedArea = partial.relatedArea;
+  const impactArea =
+    partial.impactArea ?? RELATED_TO_IMPACT[relatedArea] ?? "documentation";
+  const impactOnCompleteness =
+    partial.impactOnCompleteness ?? DEFAULT_IMPACT_BY_PRIORITY[priority];
   return {
     ...partial,
+    priority,
+    relatedArea,
+    impactArea,
+    impactOnCompleteness: Math.max(5, Math.min(20, impactOnCompleteness)),
     requiredForFinalPlan:
-      partial.requiredForFinalPlan ?? partial.priority === "critical",
+      partial.requiredForFinalPlan ?? priority === "critical",
   };
 }
 
@@ -282,7 +341,10 @@ function buildDynamicQuestions(signals: ProjectSignal[]): ClarifyingQuestion[] {
 
   // 4. MDCP — only if status unknown; not if user said brak mapy
   const mdcpKnown = hasSignal(signals, "hasMdcp", true) || hasSignal(signals, "hasMdcp", false);
-  if (!mdcpKnown && !hasSignal(signals, "mdcpStatus", "declared_missing")) {
+  const skipMdcpForExtension =
+    getProjectType(signals) === "extension_reconstruction" &&
+    (hasSignal(signals, "buildingType", "existing") || hasSignal(signals, "buildingType", "mixed"));
+  if (!mdcpKnown && !hasSignal(signals, "mdcpStatus", "declared_missing") && !skipMdcpForExtension) {
     questions.push(
       makeQuestion({
         id: "cq-mdcp-status",
@@ -450,42 +512,7 @@ function buildDynamicQuestions(signals: ProjectSignal[]): ClarifyingQuestion[] {
     );
   }
 
-  // 8. Road / utilities
-  const roadCritical = noMpzpOrWz || planning === "unknown";
-  if (hasSignal(signals, "roadAccessUnclear", true)) {
-    questions.push(
-      makeQuestion({
-        id: "cq-road-access",
-        question:
-          "Jaki jest sposób dostępu do drogi publicznej (bezpośredni front, zjazd przez serwitut, konieczność ustanowienia służebności) — szczególnie przy braku MPZP i ścieżce WZ?",
-        reason:
-          "Dostęp do drogi publicznej warunkuje lokalizację zjazdu na PZT, uzgodnienia z zarządcą drogi oraz zgodność z warunkami WZ lub MPZP; przy niejasnym statusie planistycznym wymaga wczesnej weryfikacji prawnej i technicznej.",
-        options: ["Bezpośredni", "Przez serwitut", "Brak — wymaga rozwiązania", "Nie wiem"],
-        requiredForFinalPlan: false,
-        priority: roadCritical ? "critical" : "important",
-        relatedArea: "technical",
-        triggerReason: "road_access_unclear",
-      })
-    );
-  }
-  if (hasSignal(signals, "utilitiesUnclear", true)) {
-    questions.push(
-      makeQuestion({
-        id: "cq-utilities",
-        question:
-          "Czy ustalono możliwość i zakres przyłączy mediów (woda, kanalizacja, energia elektryczna, gaz, teletechnika) oraz warunki gestorów sieci?",
-        reason:
-          "Przy braku MPZP/WZ lub niejasnym zagospodarowaniu sieci te ustalenia wpływają na układ PZT, lokalizację zjazdów i harmonogram uzgodnień z gestorami — stanowią dokument wejściowy do dalszej dokumentacji projektowej.",
-        options: ["Tak — wszystkie", "Częściowo", "Nie — do uzgodnienia", "Nie wiem"],
-        requiredForFinalPlan: false,
-        priority: roadCritical ? "critical" : "important",
-        relatedArea: "technical",
-        triggerReason: "utilities_unclear",
-      })
-    );
-  }
-
-  // 9. Constraints — targeted only when not already confirmed
+  // 8. Constraints — targeted only when not already confirmed
   if (
     hasSignal(signals, "hasConservationConstraint", true) &&
     !hasSignal(signals, "conservationScopeConfirmed", true)
@@ -630,291 +657,26 @@ function buildDynamicQuestions(signals: ProjectSignal[]): ClarifyingQuestion[] {
   return questions;
 }
 
-/** Type-specific clarifications per investment category (lead architect workflow). */
-function buildTypeSpecificQuestions(signals: ProjectSignal[], prompt: string): ClarifyingQuestion[] {
-  const questions: ClarifyingQuestion[] = [];
-  const pt = getProjectType(signals);
-  const classification = classifyProjectType(signals, prompt);
-
-  if (!hasSignal(signals, "hasGeotechnicalOpinion", true) && !hasSignal(signals, "hasGeotechnicalOpinion", false)) {
-  if (
-    pt !== "unknown" &&
-    (classification.isNewBuilding || classification.isIndustrial || classification.isExtension)
-  ) {
-    questions.push(
-      makeQuestion({
-        id: "cq-geotechnical",
-        question:
-          "Czy wykonano lub planujecie Państwo opinię geotechniczną (badania podłoża, kategoria geotechniczna) przed projektem fundamentów?",
-        reason:
-          "Geotechnik powinien być zaangażowany przed konstrukcją — to standard koordynacji przed fundamentami i płytą.",
-        options: ["Tak — posiadam", "Zlecone / w trakcie", "Nie — do zlecenia", "Nie wiem"],
-        requiredForFinalPlan:
-          pt === "warehouse" || pt === "warehouse_service_hall" || pt === "factory_industrial",
-        priority: classification.isIndustrial ? "important" : "optional",
-        relatedArea: "technical",
-        triggerReason: `type_${pt}_geotechnical`,
-      })
-    );
-  }
-  }
-
-  if (!hasSignal(signals, "hasInvestorBrief", true) && pt !== "unknown") {
-    questions.push(
-      makeQuestion({
-        id: "cq-investor-brief",
-        question:
-          "Czy zebrano wytyczne inwestora / brief projektowy (program, standard, harmonogram) przed koncepcją?",
-        reason:
-          "Brief jest dokumentem wejściowym do prac koncepcyjnych — standard profesjonalnej koordynacji projektowej.",
-        options: ["Tak — kompletny", "Częściowo", "Nie — do zebrania", "Nie wiem"],
-        requiredForFinalPlan: false,
-        priority: "important",
-        relatedArea: "documentation",
-        triggerReason: `type_${pt}_brief`,
-      })
-    );
-  }
-
-  if (pt === "single_family") {
-    questions.push(
-      makeQuestion({
-        id: "cq-utilities-stormwater",
-        question:
-          "Czy ustalono zakres przyłączy mediów oraz sposób odprowadzenia wód opadowych (studnia, retencja, kanalizacja deszczowa)?",
-        reason: "Wpływa na PZT, lokalizację zjazdów i uzgodnienia z gestorami przed PAB.",
-        options: ["Tak", "Częściowo", "Nie — do uzgodnienia", "Nie wiem"],
-        requiredForFinalPlan: false,
-        priority: "optional",
-        relatedArea: "technical",
-        triggerReason: "single_family_utilities",
-      })
-    );
-  }
-
-  if (pt === "multi_family") {
-    if (!questions.find((q) => q.id === "cq-parking-multi")) {
-      questions.push(
-        makeQuestion({
-          id: "cq-pum-parking",
-          question:
-            "Czy znane są wymagania PUM, liczba lokali oraz minimalna liczba miejsc postojowych z MPZP i przepisów o dostępności?",
-          reason: "PUM i parking determinują układ PZT i wstępną ocenę zgodności z planem.",
-          options: ["Tak", "Częściowo", "Nie", "Nie wiem"],
-          requiredForFinalPlan: false,
-          priority: "important",
-          relatedArea: "planning",
-          triggerReason: "multi_family_pum",
-        })
-      );
-    }
-  }
-
-  if (pt === "warehouse" || pt === "warehouse_service_hall") {
-    questions.push(
-      makeQuestion({
-        id: "cq-storage-height",
-        question:
-          "Jaka jest planowana wysokość składowania (regały wysokiego składowania) i jakie towary będą magazynowane?",
-        reason:
-          "Wysokość regałów, rodzaj towarów i klasa pożarowa wpływają na kubaturę hali, strefy PPOŻ i drogi pożarowe — to podstawa koncepcji magazynowej, nie biurowej.",
-        options: ["Ustalone", "Częściowo", "Nie", "Nie wiem"],
-        requiredForFinalPlan: false,
-        priority: "critical",
-        relatedArea: "technical",
-        triggerReason: "warehouse_storage",
-      }),
-      makeQuestion({
-        id: "cq-fire-load-warehouse",
-        question:
-          "Czy ustalono obciążenie pożarowe magazynu i wstępne założenia PPOŻ dla wysokiego składowania?",
-        reason:
-          "Przy magazynie wysokiego składowania PPOŻ determinuje strefy, odległości i instalacje — wymaga wczesnych ustaleń przed PAB.",
-        options: ["Tak", "Częściowo", "Nie", "Nie wiem"],
-        requiredForFinalPlan: false,
-        priority: "critical",
-        relatedArea: "specialists",
-        triggerReason: "warehouse_fire_load",
-      }),
-      makeQuestion({
-        id: "cq-floor-slab",
-        question: "Czy znane są obciążenia posadzki / płyty (TIR, regały, strefy składowania, doki)?",
-        reason: "Obciążenia łączą geotechnikę z konstrukcją płyty fundamentowej i posadzki przemysłowej.",
-        options: ["Tak", "Częściowo", "Nie", "Nie wiem"],
-        requiredForFinalPlan: false,
-        priority: "important",
-        relatedArea: "technical",
-        triggerReason: "warehouse_floor",
-      }),
-      makeQuestion({
-        id: "cq-docks-tir",
-        question:
-          "Czy określono liczbę doków, układ placu manewrowego i ruch samochodów ciężarowych (TIR)?",
-        reason:
-          "Logistyka TIR i manewry ciężarówek wpływają na PZT, zjazdy, geometrię hali i nośność nawierzchni.",
-        options: ["Tak", "Częściowo", "Nie", "Nie wiem"],
-        requiredForFinalPlan: false,
-        priority: "important",
-        relatedArea: "technical",
-        triggerReason: "warehouse_docks_tir",
-      }),
-      makeQuestion({
-        id: "cq-warehouse-utilities",
-        question:
-          "Czy zweryfikowano zapotrzebowanie na media (energia, woda, kanalizacja) oraz odprowadzenie wód opadowych z dachu i placu?",
-        reason:
-          "Przy halach magazynowych moce przyłączeniowe i retencja/opadowe muszą być znane przed zamrożeniem układu na PZT.",
-        options: ["Tak", "Częściowo", "Nie", "Nie wiem"],
-        requiredForFinalPlan: false,
-        priority: "important",
-        relatedArea: "technical",
-        triggerReason: "warehouse_utilities",
-      }),
-      makeQuestion({
-        id: "cq-warehouse-environment",
-        question:
-          "Czy oceniono wpływ hałasu i ruchu ciężarówek na sąsiedztwo (wymagania środowiskowe do weryfikacji)?",
-        reason:
-          "Hale z TIR mogą wymagać analizy akustycznej lub warunków środowiskowych — do weryfikacji w gminie i przepisach.",
-        options: ["Tak — ocenione", "Do weryfikacji", "Nie dotyczy", "Nie wiem"],
-        requiredForFinalPlan: false,
-        priority: "optional",
-        relatedArea: "constraints",
-        triggerReason: "warehouse_environment",
-      })
-    );
-  }
-
-  if (pt === "factory_industrial" || pt === "production_hall") {
-    if (!hasSignal(signals, "hasTechnologyBrief", true)) {
-      questions.push(
-        makeQuestion({
-          id: "cq-technology-brief",
-          question:
-            "Czy dysponujecie szczegółowym briefem technologicznym (linie produkcyjne, media, substancje, BHP)?",
-          reason:
-            "Bez briefu technologicznego nie można rzetelnie zaplanować układu hali i instalacji procesowych.",
-          options: ["Tak", "Częściowo", "Nie — brak szczegółów", "Nie wiem"],
-          requiredForFinalPlan: true,
-          priority: "critical",
-          relatedArea: "technical",
-          triggerReason: "factory_technology_brief",
-        })
-      );
-    }
-    questions.push(
-      makeQuestion({
-        id: "cq-hazardous-substances",
-        question:
-          "Czy w procesie występują substancje niebezpieczne wymagające dodatkowych rozwiązań (do weryfikacji)?",
-        reason: "Może wpływać na strefowanie, PPOŻ i wymagania środowiskowe — do weryfikacji prawnej.",
-        options: ["Tak", "Nie", "Do weryfikacji", "Nie wiem"],
-        requiredForFinalPlan: false,
-        priority: "important",
-        relatedArea: "constraints",
-        triggerReason: "factory_hazmat",
-      }),
-      makeQuestion({
-        id: "cq-environmental-decision",
-        question:
-          "Czy oceniono konieczność decyzji o środowiskowych uwarunkowaniach (do weryfikacji)?",
-        reason: "Procedura środowiskowa może wydłużyć harmonogram — bez wskazywania konkretnych artykułów.",
-        options: ["Tak — wymagana", "Nie", "Do weryfikacji", "Nie wiem"],
-        requiredForFinalPlan: false,
-        priority: "important",
-        relatedArea: "formal_path",
-        triggerReason: "factory_environment",
-      })
-    );
-  }
-
-  if (pt === "extension_reconstruction" || classification.isExtension) {
-    if (!questions.find((q) => q.id === "cq-existing-inventory")) {
-      questions.push(
-        makeQuestion({
-          id: "cq-existing-inventory",
-          question:
-            "Czy wykonano inwentaryzację architektoniczną oraz wstępną ocenę konstrukcji i instalacji istniejącego budynku?",
-          reason: "Dokument wejściowy do rozbudowy/przebudowy — bez niego ryzyko zmiany zakresu robót.",
-          options: ["Tak", "Częściowo", "Nie", "Nie wiem"],
-          requiredForFinalPlan: true,
-          priority: "critical",
-          relatedArea: "existing_building",
-          triggerReason: "extension_inventory",
-        })
-      );
-    }
-    questions.push(
-      makeQuestion({
-        id: "cq-structural-existing",
-        question:
-          "Czy projektant konstrukcji ocenił nośność istniejących elementów pod nowe obciążenia?",
-        reason: "Rozbudowa wymaga weryfikacji nośności przed zamrożeniem koncepcji.",
-        options: ["Tak", "W trakcie", "Nie", "Nie wiem"],
-        requiredForFinalPlan: false,
-        priority: "important",
-        relatedArea: "existing_building",
-        triggerReason: "extension_structural",
-      }),
-      makeQuestion({
-        id: "cq-installations-existing",
-        question: "Czy zinwentaryzowano instalacje istniejące i zakres ich modernizacji?",
-        reason: "Instalacje często determinują koszt i zakres przebudowy.",
-        options: ["Tak", "Częściowo", "Nie", "Nie wiem"],
-        requiredForFinalPlan: false,
-        priority: "important",
-        relatedArea: "existing_building",
-        triggerReason: "extension_installations",
-      })
-    );
-  }
-
-  if (pt === "change_of_use" || classification.isChangeOfUse) {
-    questions.push(
-      makeQuestion({
-        id: "cq-new-function-planning",
-        question:
-          "Czy nowa funkcja (np. usługi zamiast magazynu) jest dopuszczalna według MPZP/WZ i wymaga zmiany sposobu użytkowania?",
-        reason: "Zmiana użytkowania wymaga zgodności planistycznej i formalnej ścieżki.",
-        options: ["Tak — zgodne", "Wymaga analizy", "Nie wiem"],
-        requiredForFinalPlan: true,
-        priority: "critical",
-        relatedArea: "planning",
-        triggerReason: "change_of_use_planning",
-      })
-    );
-  }
-
-  if (pt === "unknown") {
-    questions.push(
-      makeQuestion({
-        id: "cq-building-function",
-        question:
-          "Jaka kategoria inwestycji jest planowana (mieszkalna, usługowa, magazyn, hala, fabryka, inna)?",
-        reason: "Bez funkcji obiektu nie można dobrać właściwej ścieżki uzgodnień i dokumentacji.",
-        options: [
-          "Jednorodzinna",
-          "Wielorodzinna",
-          "Usługi / handel",
-          "Magazyn / hala",
-          "Przemysł",
-          "Inna",
-        ],
-        requiredForFinalPlan: true,
-        priority: "critical",
-        relatedArea: "technical",
-        triggerReason: "function_unclear",
-      })
-    );
-  }
-
-  return questions;
+/** Questions from missing critical data groups (professional intake interview). */
+function buildIntakeGroupQuestions(signals: ProjectSignal[], prompt: string): ClarifyingQuestion[] {
+  const projectType = getProjectType(signals);
+  const ctx = { signals, prompt, projectType };
+  const missingGroups = evaluateMissingIntakeGroups(ctx);
+  const inputs = getIntakeQuestionsForMissingGroups(missingGroups, ctx);
+  return inputs.map((q) =>
+    makeQuestion({
+      ...q,
+      impactArea: q.impactArea,
+      triggerReason: q.triggerReason,
+    })
+  );
 }
 
-/** Skip questions already answered via extracted signals or rule duplicates. */
+/** Skip questions already answered via extracted signals, prompt, or rule duplicates. */
 function filterAnswered(
   questions: ClarifyingQuestion[],
-  signals: ProjectSignal[]
+  signals: ProjectSignal[],
+  prompt: string
 ): ClarifyingQuestion[] {
   const planning = signalValue(signals, "planningStatus");
 
@@ -974,14 +736,34 @@ function filterAnswered(
       case "cq-technology-brief":
         return !hasSignal(signals, "hasTechnologyBrief", true);
       case "cq-storage-height":
+        return (
+          ["warehouse", "warehouse_service_hall"].includes(getProjectType(signals)) &&
+          !hasSignal(signals, "warehouseStorageDefined", true)
+        );
       case "cq-floor-slab":
+        return (
+          ["warehouse", "warehouse_service_hall"].includes(getProjectType(signals)) &&
+          !/obciążen.*posadzk|posadzk.*obciąż|płyt.*fundament|regał.*obciąż/i.test(prompt)
+        );
       case "cq-fire-load-warehouse":
+        return (
+          ["warehouse", "warehouse_service_hall"].includes(getProjectType(signals)) &&
+          !hasSignal(signals, "warehouseFireLoadDefined", true)
+        );
       case "cq-docks-tir":
+        return (
+          ["warehouse", "warehouse_service_hall"].includes(getProjectType(signals)) &&
+          !hasSignal(signals, "warehouseDocksDefined", true)
+        );
       case "cq-warehouse-utilities":
+      case "cq-stormwater-industrial":
+        return ["warehouse", "warehouse_service_hall", "production_hall", "factory_industrial"].includes(
+          getProjectType(signals)
+        );
       case "cq-warehouse-environment":
         return (
-          getProjectType(signals) === "warehouse" ||
-          getProjectType(signals) === "warehouse_service_hall"
+          ["warehouse", "warehouse_service_hall"].includes(getProjectType(signals)) &&
+          !hasSignal(signals, "environmentScopeConfirmed", true)
         );
       case "cq-structural-existing":
       case "cq-installations-existing":
@@ -1019,67 +801,83 @@ function filterAnswered(
   });
 }
 
+function resolveQuestionCap(
+  tier: ComplexityTier,
+  completeness: number,
+  projectType: ProjectTypeKey,
+  missingGroupCount: number
+): number {
+  if (completeness >= 70) return 0;
+  const bounds = COMPLEXITY_QUESTION_BOUNDS[tier];
+  const deficitRatio = Math.min(1, (70 - completeness) / 70);
+  const gapBoost = Math.min(3, Math.max(0, Math.floor(missingGroupCount / 3)));
+  const scaled =
+    bounds.min + Math.round((bounds.max - bounds.min) * deficitRatio) + gapBoost;
+  return Math.min(bounds.max, maxQuestionsForType(projectType), scaled, TIER_LIMITS[tier] + 2);
+}
+
 function rankAndLimit(
   questions: ClarifyingQuestion[],
   tier: ComplexityTier,
-  projectType: ProjectTypeKey
+  projectType: ProjectTypeKey,
+  completeness: number,
+  missingGroupCount: number
 ): ClarifyingQuestion[] {
+  const cap = resolveQuestionCap(tier, completeness, projectType, missingGroupCount);
+  if (cap === 0) return [];
+
   const allowOptional =
     tier === "complex" || tier === "very_complex" || projectType !== "single_family";
   const filtered = questions.filter(
     (q) => allowOptional || q.priority !== "optional"
   );
 
-  const sorted = [...filtered].sort(
-    (a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority]
-  );
+  const sorted = [...filtered].sort((a, b) => {
+    const priorityOrder = PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
+    if (priorityOrder !== 0) return priorityOrder;
+    return (
+      intakeGroupPriorityFromTrigger(a.triggerReason) -
+      intakeGroupPriorityFromTrigger(b.triggerReason)
+    );
+  });
 
-  const cap = Math.max(TIER_LIMITS[tier], maxQuestionsForType(projectType));
-  return sorted.slice(0, Math.min(cap, 10));
+  return sorted.slice(0, cap);
 }
 
 export function generateClarifyingQuestions(
   signals: ProjectSignal[],
-  _prompt = ""
+  prompt = ""
 ): ClarifyingQuestion[] {
-  if (isInputCompleteEnough(signals)) {
+  const completeness = calculateAnalysisCompleteness(signals, prompt);
+  if (completeness >= 70 && isInputCompleteEnough(signals)) {
     return [];
   }
 
   const tier = assessComplexity(signals);
   const pt = getProjectType(signals);
+  const intake = buildIntakeGroupQuestions(signals, prompt);
   const dynamic = buildDynamicQuestions(signals);
-  const typeSpecific = buildTypeSpecificQuestions(signals, _prompt);
   const fromRules = collectRuleQuestions(signals);
-  const merged = mergeQuestions([...dynamic, ...typeSpecific, ...fromRules]);
-  const filtered = filterAnswered(merged, signals);
+  const merged = mergeQuestions([...intake, ...dynamic, ...fromRules]);
+  const filtered = filterAnswered(merged, signals, prompt);
 
-  if (filtered.length === 0) {
+  if (filtered.length === 0 || completeness >= 70) {
     return [];
   }
 
-  return rankAndLimit(filtered, tier, pt);
+  const missingGroupCount = evaluateMissingIntakeGroups({
+    signals,
+    prompt,
+    projectType: pt,
+  }).length;
+
+  return rankAndLimit(filtered, tier, pt, completeness, missingGroupCount);
 }
 
-export function needsClarification(
-  signals: ProjectSignal[],
-  promptLength: number
-): boolean {
-  const questions = generateClarifyingQuestions(signals);
-  if (questions.length === 0) return false;
-
-  const critical = questions.filter((q) => q.priority === "critical");
-  if (critical.length > 0) return true;
-
-  const important = questions.filter((q) => q.priority === "important");
-  if (important.length >= 2) return true;
-
-  if (promptLength < 40 && important.length >= 1) return true;
-
-  const lowConfidence = signals.filter((s) => s.confidence === "low").length >= 2;
-  if (lowConfidence && questions.length >= 3) return true;
-
-  return important.length > 0;
+export function needsClarification(signals: ProjectSignal[], prompt: string): boolean {
+  const questions = generateClarifyingQuestions(signals, prompt);
+  const completeness = calculateAnalysisCompleteness(signals, prompt);
+  return shouldShowClarification(completeness, questions.length);
 }
 
 export function getComplexityTier(signals: ProjectSignal[]): ComplexityTier {

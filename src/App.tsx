@@ -20,6 +20,7 @@ export default function App() {
   const [structured, setStructured] = useState<StructuredProjectFields>({});
   const [signals, setSignals] = useState<ProjectSignal[]>([]);
   const [questions, setQuestions] = useState<ClarifyingQuestion[]>([]);
+  const [preliminaryCompleteness, setPreliminaryCompleteness] = useState(0);
   const [analysis, setAnalysis] = useState<ProjectAnalysis | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
@@ -52,8 +53,9 @@ export default function App() {
     const prelim = runPreliminaryAnalysis(p, s);
     setSignals(prelim.signals);
     setQuestions(prelim.clarifyingQuestions);
+    setPreliminaryCompleteness(prelim.analysisCompletenessPercentage);
 
-    if (needsClarification(prelim.signals, p.length)) {
+    if (needsClarification(prelim.signals, p)) {
       setPhase("clarification");
     } else {
       void runFinalAnalysis(p, s, [], prelim.clarifyingQuestions);
@@ -75,6 +77,7 @@ export default function App() {
     setStructured({});
     setSignals([]);
     setQuestions([]);
+    setPreliminaryCompleteness(0);
     setAnalysis(null);
     setAnalyzing(false);
     setAnalysisError(null);
@@ -124,6 +127,8 @@ export default function App() {
             questions={questions}
             signals={signals}
             detectedLabels={[]}
+            prompt={prompt}
+            analysisCompletenessPercentage={preliminaryCompleteness}
             onSubmit={handleClarificationSubmit}
             onSkip={handleClarificationSkip}
             onBack={() => setPhase("input")}

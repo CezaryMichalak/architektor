@@ -1,4 +1,10 @@
-import type { ProjectAnalysis, ProjectSignal } from "../../types/architecture";
+import type {
+  ClarificationAnswer,
+  ProjectAnalysis,
+  ProjectSignal,
+} from "../../types/architecture";
+import { calculateAnalysisCompleteness } from "../calculateAnalysisCompleteness";
+import { calculateProjectProgress } from "../calculateProjectProgress";
 import { applyConsistencyPass } from "./consistencyPass";
 import { applyDedupePass } from "./dedupePass";
 import { applyDomainEnrichmentPass } from "./domainEnrichmentPass";
@@ -11,7 +17,8 @@ import { applySafetyPass } from "./safetyPass";
 export function applyPostAiPasses(
   analysis: ProjectAnalysis,
   signals: ProjectSignal[],
-  prompt: string
+  prompt: string,
+  clarificationAnswers: ClarificationAnswer[] = []
 ): ProjectAnalysis {
   let result = applySafetyPass(analysis, signals);
   result = applyDomainEnrichmentPass(result, signals, prompt);
@@ -29,6 +36,17 @@ export function applyPostAiPasses(
       result = { ...result, confidenceLevel: "medium" };
     }
   }
+
+  result = {
+    ...result,
+    advancementPercentage: calculateProjectProgress(signals),
+    analysisCompletenessPercentage: calculateAnalysisCompleteness(
+      signals,
+      prompt,
+      clarificationAnswers,
+      result.clarifyingQuestionsAsked
+    ),
+  };
 
   return result;
 }

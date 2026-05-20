@@ -1,5 +1,24 @@
 /** Shared keyword patterns for warehouse / office classification. */
 
+/** Single-family residential — include inflected Polish forms. */
+export const SINGLE_FAMILY_PATTERNS = [
+  /dom\s+jednorodzinny/i,
+  /domu\s+jednorodzinnego/i,
+  /budynek\s+mieszkalny\s+jednorodzinny/i,
+  /budynku\s+mieszkalnego\s+jednorodzinnego/i,
+  /budynek\s+jednorodzinny/i,
+  /budynku\s+jednorodzinnego/i,
+  /budow[aąey]\s+domu\s+jednorodzinnego/i,
+  /dom\s+wolnostojąc/i,
+  /domu\s+wolnostojąc/i,
+  /dom\s+parterowy/i,
+  /domu\s+parterowego/i,
+  /dom\s+z\s+garażem/i,
+  /domu\s+z\s+garażem/i,
+  /garaż\s+dwustanowiskow/i,
+  /działka\s+budowlana\s+pod\s+dom/i,
+];
+
 export const WAREHOUSE_SERVICE_HALL_PATTERNS = [
   /hala\s+magazynowo[-\s]?usługow/i,
   /magazynowo[-\s]?usługow/i,

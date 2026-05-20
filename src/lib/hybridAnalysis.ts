@@ -12,6 +12,10 @@ import { applyPostAiPasses } from "./ai/applyPostAiPasses";
 import { applySourceGuard } from "./ai/sourceGuard";
 import { validateAnalysis } from "./ai/validateAnalysis";
 import type { AnalysisErrorCode } from "../types/architecture";
+import {
+  calculateAnalysisCompleteness,
+  canGenerateFinalPlanWithAssumptions,
+} from "./calculateAnalysisCompleteness";
 import { classifyProjectType } from "./classifyProjectType";
 import { extractProjectSignals, signalsToDetectedLabels } from "./extractProjectSignals";
 import { applyClarificationAnswers, mockAnalysis, preliminaryAnalysis } from "./mockAnalysis";
@@ -53,18 +57,21 @@ function buildPreliminary(
     uncertain.push("Typ inwestycji — wymaga doprecyzowania (krytyczne)");
   }
 
+  const completeness = calculateAnalysisCompleteness(signals, prompt);
   const blockingQs = questions.filter(
     (q) => q.priority === "critical" || (q.requiredForFinalPlan && q.priority !== "optional")
   );
   const canGenerateFinalPlan =
-    questions.length === 0 ||
-    (missingCritical.length === 0 && blockingQs.length === 0);
+    canGenerateFinalPlanWithAssumptions(completeness) &&
+    (questions.length === 0 ||
+      (missingCritical.length === 0 && blockingQs.length === 0));
 
   return {
     detectedInputs: signalsToDetectedLabels(signals),
     uncertainInputs: uncertain,
     missingCriticalInputs: missingCritical,
     clarifyingQuestions: questions,
+    analysisCompletenessPercentage: completeness,
     canGenerateFinalPlan,
     signals,
   };
@@ -112,7 +119,7 @@ export async function runHybridFinalAnalysis(
         console.warn("[architektor-ai] schema validation failed", schemaErrors.slice(0, 10));
       }
       const fallbackRaw = mockAnalysis(prompt, structuredFields, clarificationAnswers, questionsAsked);
-      const fallback = applyPostAiPasses(fallbackRaw, signals, prompt);
+      const fallback = applyPostAiPasses(fallbackRaw, signals, prompt, clarificationAnswers);
       const meta: AnalysisMeta = {
         source: "rules",
         usedFallback: true,
@@ -127,7 +134,7 @@ export async function runHybridFinalAnalysis(
       return { analysis: { ...fallback, meta }, meta };
     } else if (validated.analysis) {
       let analysis = applySourceGuard(validated.analysis);
-      analysis = applyPostAiPasses(analysis, signals, prompt);
+      analysis = applyPostAiPasses(analysis, signals, prompt, clarificationAnswers);
       analysis.clarifyingQuestionsAsked = questionsAsked;
 
       const meta: AnalysisMeta = {
@@ -154,7 +161,7 @@ export async function runHybridFinalAnalysis(
   }
 
   const fallbackRaw = mockAnalysis(prompt, structuredFields, clarificationAnswers, questionsAsked);
-  const fallback = applyPostAiPasses(fallbackRaw, signals, prompt);
+  const fallback = applyPostAiPasses(fallbackRaw, signals, prompt, clarificationAnswers);
   const meta: AnalysisMeta = {
     source: "rules",
     usedFallback: true,

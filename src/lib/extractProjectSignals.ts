@@ -3,8 +3,10 @@ import {
   addClassificationSignals,
   classifyProjectType,
 } from "./classifyProjectType";
+import { MISSING_UNCERTAIN_LABELS } from "./missingInputLabels";
 import {
   OFFICE_PRIMARY_PATTERNS,
+  SINGLE_FAMILY_PATTERNS,
   WAREHOUSE_PRIMARY_PATTERNS,
   WAREHOUSE_SERVICE_HALL_PATTERNS,
 } from "./projectTypePatterns";
@@ -28,8 +30,8 @@ const NEGATIVE_TEXT_PATTERNS: TextPatternRule[] = [
       /nie\s+mam\s+mapy/i,
       /nie\s+posiadam\s+mapy/i,
       /nie\s+posiadam\s+mdcp/i,
-      /nie\s+zamówion[aey]?\s+.*map[aęy]\s+do\s+celów\s+projektowych/i,
-      /nie\s+został[aoy]?\s+(jeszcze\s+)?zamówion[aey]?\s+map[aęy]\s+do\s+celów\s+projektowych/i,
+      /nie\s+zamówion[oaeiy]?\s+.*map[aęy]\s+do\s+celów\s+projektowych/i,
+      /nie\s+został[aoy]?\s+(jeszcze\s+)?zamówion[oaeiy]?\s+map[aęy]\s+do\s+celów\s+projektowych/i,
       /brak\s+mapy(?!\s+z\s+)/i,
     ],
     value: false,
@@ -58,7 +60,7 @@ const TEXT_PATTERNS: TextPatternRule[] = [
   {
     key: "buildingCategory",
     label: "Kategoria obiektu",
-    patterns: [/dom\s+jednorodzinny/i, /budynek\s+jednorodzinny/i, /jednorodzinny/i],
+    patterns: SINGLE_FAMILY_PATTERNS,
     value: "single_family",
   },
   {
@@ -135,7 +137,13 @@ const TEXT_PATTERNS: TextPatternRule[] = [
   {
     key: "hasMpzpExcerpt",
     label: "Wypis i wyrys z MPZP",
-    patterns: [/mam\s+wypis/i, /posiadam\s+wypis/i, /wypis\s+i\s+wyrys/i, /wypis\s+.*wyrys/i],
+    patterns: [
+      /mam\s+wypis/i,
+      /posiadam\s+wypis/i,
+      /posiada\s+wypis/i,
+      /wypis\s+i\s+wyrys/i,
+      /wypis\s+.*wyrys/i,
+    ],
     value: true,
   },
   {
@@ -192,7 +200,13 @@ const TEXT_PATTERNS: TextPatternRule[] = [
   {
     key: "hasGeotechnicalOpinion",
     label: "Opinia geotechniczna",
-    patterns: [/brak\s+opinii\s+geotechniczn/i, /bez\s+geotechn/i],
+    patterns: [
+      /brak\s+opinii\s+geotechniczn/i,
+      /brak\s+rozpoznania\s+geotechnicznego/i,
+      /bez\s+geotechn/i,
+      /nie\s+wykonano\s+badań\s+geotechnicznych/i,
+      /nie\s+wykonano\s+.*geotechn/i,
+    ],
     value: false,
   },
   {
@@ -365,8 +379,20 @@ function inferUnclearInfrastructure(prompt: string, signals: ProjectSignal[]): v
     cat === "public_utility";
 
   if (!needsInfra && planning === "mpzp_exists") {
+    const mentionsUtilities = /przyłąc|media|woda|kanalizac|energia|gaz|sieć|warunki\s+przyłączenia/i.test(
+      prompt
+    );
+    const utilitiesUnknown =
+      cat === "single_family" && !mentionsUtilities;
     addSignal(signals, "roadAccessUnclear", "Dostęp drogowy", false, "inferred", "high");
-    addSignal(signals, "utilitiesUnclear", "Przyłącza mediów", false, "inferred", "high");
+    addSignal(
+      signals,
+      "utilitiesUnclear",
+      "Przyłącza mediów",
+      utilitiesUnknown,
+      "inferred",
+      utilitiesUnknown ? "medium" : "high"
+    );
     return;
   }
 
@@ -598,9 +624,10 @@ export { classifyProjectType } from "./classifyProjectType";
 export function signalsToDetectedLabels(signals: ProjectSignal[]): string[] {
   const labels: string[] = [];
   const map: Record<string, (v: string | boolean | number) => string | null> = {
+    projectTypeLabel: (v) => String(v),
     buildingCategory: (v) => {
       const m: Record<string, string> = {
-        single_family: "Budynek mieszkalny jednorodzinny",
+        single_family: "Dom jednorodzinny",
         multi_family: "Budynek wielorodzinny",
         service: "Budynek usługowy",
         services: "Budynek usługowy",
@@ -642,8 +669,16 @@ export function signalsToDetectedLabels(signals: ProjectSignal[]): string[] {
       };
       return m[String(v)] ?? String(v);
     },
-    hasMpzpExcerpt: (v) => (v === true ? "Posiadany wypis i wyrys z MPZP" : v === false ? "Brak wypisu i wyrysu z MPZP" : null),
+    hasMpzpExcerpt: (v) =>
+      v === true ? "Wypis i wyrys dostępny" : v === false ? "Brak wypisu i wyrysu z MPZP" : null,
     hasMdcp: (v) => (v === true ? "MDCP dostępna" : v === false ? "Brak MDCP / mapa niezamówiona" : null),
+    hasGeotechnicalOpinion: (v) =>
+      v === true
+        ? "Rozpoznanie geotechniczne dostępne"
+        : v === false
+          ? "Brak rozpoznania geotechnicznego"
+          : null,
+    utilitiesUnclear: (v) => (v === true ? MISSING_UNCERTAIN_LABELS.utilities : null),
     hasPzt: (v) => (v === true ? "PZT w opracowaniu lub gotowy" : v === false ? "Brak PZT" : null),
     buildingType: (v) => {
       const m: Record<string, string> = {

@@ -1,4 +1,6 @@
+import { calculateProjectProgress } from "../calculateProjectProgress";
 import { evaluateGeotechnicalNeeds } from "../../data/geotechnicalRules";
+import { MISSING_UNCERTAIN_LABELS } from "../missingInputLabels";
 import { evaluateInvestorBrief, INVESTOR_BRIEF_STAGE_LABEL } from "../../data/investorBriefRules";
 import { getProjectTypeEntry } from "../../data/projectTypeMatrix";
 import type { ProjectAnalysis, ProjectSignal } from "../../types/architecture";
@@ -148,7 +150,7 @@ export function applyConsistencyPass(
         ...result.recommendedActions.map((a, i) => ({ ...a, order: i + 1 })),
       ];
     }
-    uncertain.add("MDCP — do zamówienia");
+    uncertain.add(MISSING_UNCERTAIN_LABELS.mdcp);
   }
 
   // D. Geotechnics for new industrial / hall / warehouse
@@ -219,6 +221,8 @@ export function applyConsistencyPass(
 
   result.detectedInputs = [...new Set(detected)];
   result.uncertainInputs = [...uncertain];
+
+  result.advancementPercentage = calculateProjectProgress(signals);
 
   result.meta = {
     ...result.meta,

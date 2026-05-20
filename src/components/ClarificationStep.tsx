@@ -4,13 +4,17 @@ import type {
   ClarifyingQuestion,
   ProjectSignal,
 } from "../types/architecture";
+import { calculateAnalysisCompleteness } from "../lib/calculateAnalysisCompleteness";
 import { signalsToDetectedLabels } from "../lib/extractProjectSignals";
+import { MISSING_UNCERTAIN_LABELS } from "../lib/missingInputLabels";
 import { InfoTooltip } from "./InfoTooltip";
 
 interface ClarificationStepProps {
   questions: ClarifyingQuestion[];
   signals: ProjectSignal[];
+  prompt: string;
   detectedLabels: string[];
+  analysisCompletenessPercentage: number;
   onSubmit: (answers: ClarificationAnswer[]) => void;
   onSkip: () => void;
   onBack: () => void;
@@ -64,20 +68,45 @@ function getQuestionTooltipContent(question: ClarifyingQuestion): string {
 export function ClarificationStep({
   questions,
   signals,
+  prompt,
   detectedLabels,
+  analysisCompletenessPercentage,
   onSubmit,
   onSkip,
   onBack,
 }: ClarificationStepProps) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
 
+  const draftAnswers: ClarificationAnswer[] = questions.map((q) => ({
+    questionId: q.id,
+    answer: answers[q.id] ?? "",
+    skipped: !answers[q.id],
+  }));
+  const liveCompleteness = calculateAnalysisCompleteness(
+    signals,
+    prompt,
+    draftAnswers,
+    questions
+  );
+  const displayedCompleteness = Math.max(analysisCompletenessPercentage, liveCompleteness);
+
   const detected = detectedLabels.length > 0 ? detectedLabels : signalsToDetectedLabels(signals);
+  const planningStatus = signals.find((s) => s.key === "planningStatus")?.value;
   const missingHints = [
-    !signals.find((s) => s.key === "hasMpzpExcerpt" && s.value === true) &&
-      signals.find((s) => s.key === "planningStatus")?.value === "mpzp_exists" &&
-      "Wypis i wyrys z MPZP",
-    !signals.find((s) => s.key === "hasMdcp" && s.value === true) && "MDCP",
-    signals.find((s) => s.key === "planningStatus")?.value === "unknown" && "Status planistyczny",
+    planningStatus === "mpzp_exists" &&
+      !signals.find((s) => s.key === "hasMpzpExcerpt" && s.value === true) &&
+      MISSING_UNCERTAIN_LABELS.mpzpExcerpt,
+    !signals.find((s) => s.key === "hasMdcp" && s.value === true) &&
+      signals.find((s) => s.key === "hasMdcp")?.value === false &&
+      MISSING_UNCERTAIN_LABELS.mdcp,
+    signals.find((s) => s.key === "utilitiesUnclear" && s.value === true) &&
+      MISSING_UNCERTAIN_LABELS.utilities,
+    !signals.find((s) => s.key === "hasGeotechnicalOpinion" && s.value === true) &&
+      signals.find((s) => s.key === "hasGeotechnicalOpinion")?.value === false &&
+      MISSING_UNCERTAIN_LABELS.geotechnical,
+    signals.find((s) => s.key === "investorBriefStatus")?.value === "missing" &&
+      MISSING_UNCERTAIN_LABELS.brief,
+    planningStatus === "unknown" && MISSING_UNCERTAIN_LABELS.planningStatus,
   ].filter(Boolean) as string[];
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -100,8 +129,10 @@ export function ClarificationStep({
       </div>
 
       <p className="text-sm text-slate-muted">
-        Analiza wstępna wykazała luki informacyjne. Odpowiedzi pozwolą wygenerować precyzyjniejszy plan
-        procesu projektowego.
+        Kompletność danych po analizie wstępnej:{" "}
+        <span className="font-semibold text-accent-green">{displayedCompleteness}%</span>.
+        Odpowiedzi na pytania doprecyzowujące zwiększą kompletność danych i jakość planu, ale nie oznaczają
+        faktycznego zaawansowania projektu (etap MPZP, PZT, PnB itd.).
       </p>
 
       <section className="grid gap-4 md:grid-cols-2">

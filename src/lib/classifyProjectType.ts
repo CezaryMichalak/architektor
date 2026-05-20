@@ -18,6 +18,8 @@ import {
 
   WAREHOUSE_PRIMARY_PATTERNS,
 
+  SINGLE_FAMILY_PATTERNS,
+
   WAREHOUSE_SERVICE_HALL_PATTERNS,
 
 } from "./projectTypePatterns";
@@ -124,7 +126,7 @@ const CATEGORY_TO_TYPE: Record<string, ProjectTypeKey> = {
 
 const TEXT_TYPE_PATTERNS: Array<{ type: ProjectTypeKey; patterns: RegExp[] }> = [
 
-  { type: "single_family", patterns: [/dom\s+jednorodzinny/i, /budynek\s+jednorodzinny/i, /jednorodzinny/i] },
+  { type: "single_family", patterns: SINGLE_FAMILY_PATTERNS },
 
   { type: "multi_family", patterns: [/wielorodzinny/i, /budynek\s+mieszkalny\s+wiel/i, /mieszkaniówka/i] },
 

@@ -1,8 +1,10 @@
 import type {
   ActionStep,
+  ClarifyingQuestion,
   ConfidenceLevel,
   LegalBasis,
   ProjectAnalysis,
+  QuestionImpactArea,
   RequiredDocument,
   RiskItem,
   SpecialistRecommendation,
@@ -22,6 +24,32 @@ const CLARIFICATION_AREAS = [
   "technical",
   "constraints",
 ] as const;
+
+const IMPACT_AREAS: QuestionImpactArea[] = [
+  "planning",
+  "documentation",
+  "investor_brief",
+  "geotechnics",
+  "fire_safety",
+  "road_access",
+  "utilities",
+  "structure",
+  "environment",
+  "formal_path",
+];
+
+const RELATED_TO_IMPACT: Record<
+  (typeof CLARIFICATION_AREAS)[number],
+  QuestionImpactArea
+> = {
+  planning: "planning",
+  documentation: "documentation",
+  formal_path: "formal_path",
+  specialists: "fire_safety",
+  existing_building: "structure",
+  technical: "utilities",
+  constraints: "environment",
+};
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -181,14 +209,33 @@ function validateClarifyingQuestion(
     pushEnumError(errors, `${path}.relatedArea`, v.relatedArea, CLARIFICATION_AREAS);
   }
   if (errors.some((e) => e.startsWith(`${path}.`))) return null;
+
+  const relatedArea = v.relatedArea as ClarifyingQuestion["relatedArea"];
+  const priority = isString(v.priority)
+    ? (v.priority as ClarifyingQuestion["priority"])
+    : "important";
+  const impactArea =
+    isString(v.impactArea) && IMPACT_AREAS.includes(v.impactArea as QuestionImpactArea)
+      ? (v.impactArea as QuestionImpactArea)
+      : RELATED_TO_IMPACT[relatedArea];
+  const impactOnCompleteness = isNumber(v.impactOnCompleteness)
+    ? Math.max(5, Math.min(20, Math.round(v.impactOnCompleteness)))
+    : priority === "critical"
+      ? 18
+      : priority === "optional"
+        ? 7
+        : 12;
+
   return {
     id: v.id as string,
     question: v.question as string,
     reason: v.reason as string,
     options: isStringArray(v.options) ? v.options : undefined,
     requiredForFinalPlan: v.requiredForFinalPlan === true,
-    relatedArea: v.relatedArea as ProjectAnalysis["clarifyingQuestionsAsked"][number]["relatedArea"],
-    priority: isString(v.priority) ? (v.priority as ProjectAnalysis["clarifyingQuestionsAsked"][number]["priority"]) : "important",
+    relatedArea,
+    impactArea,
+    impactOnCompleteness,
+    priority,
     triggerReason: isString(v.triggerReason) ? v.triggerReason : (v.reason as string),
   };
 }
@@ -204,6 +251,12 @@ export function collectProjectAnalysisErrors(raw: unknown): string[] {
   if (!isString(raw.projectType)) errors.push("projectType: missing or wrong type");
   if (!isString(raw.projectStage)) errors.push("projectStage: missing or wrong type");
   if (!isNumber(raw.advancementPercentage)) errors.push("advancementPercentage: missing or wrong type (number)");
+  if (
+    raw.analysisCompletenessPercentage !== undefined &&
+    !isNumber(raw.analysisCompletenessPercentage)
+  ) {
+    errors.push("analysisCompletenessPercentage: wrong type (number)");
+  }
   if (!isString(raw.immediateNextStep)) errors.push("immediateNextStep: missing or wrong type");
   if (!isString(raw.disclaimer)) errors.push("disclaimer: missing or wrong type");
 
@@ -300,6 +353,17 @@ export function parseProjectAnalysisJson(raw: unknown): ProjectAnalysis | null {
     projectType: raw.projectType as string,
     projectStage: raw.projectStage as string,
     advancementPercentage: Math.min(100, Math.max(0, Math.round(raw.advancementPercentage as number))),
+    analysisCompletenessPercentage: Math.min(
+      100,
+      Math.max(
+        0,
+        Math.round(
+          isNumber(raw.analysisCompletenessPercentage)
+            ? (raw.analysisCompletenessPercentage as number)
+            : 30
+        )
+      )
+    ),
     confidenceLevel: raw.confidenceLevel as ConfidenceLevel,
     detectedInputs: raw.detectedInputs as string[],
     uncertainInputs: raw.uncertainInputs as string[],

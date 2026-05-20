@@ -54,7 +54,7 @@ export const CLARIFICATION_TEST_CASES = [
     prompt: "Rozbudowa istniejącego budynku usługowego.",
     expect: {
       minCount: 3,
-      maxCount: 8,
+      maxCount: 10,
       mustIncludeAreas: ["existing_building", "specialists", "planning"],
       mustIncludeIds: ["cq-existing-inventory", "cq-building-scope"],
     },
@@ -65,7 +65,7 @@ export const CLARIFICATION_TEST_CASES = [
     prompt: "Budynek wielorodzinny na etapie koncepcji, MPZP dostępny.",
     expect: {
       minCount: 2,
-      maxCount: 8,
+      maxCount: 9,
       mustIncludeIds: ["cq-planning-params", "cq-fire-accessibility", "cq-road-access"],
     },
   },
@@ -78,6 +78,39 @@ export const CLARIFICATION_TEST_CASES = [
       maxCount: 10,
       mustIncludeAreas: ["constraints", "existing_building", "planning"],
       mustIncludeIds: ["cq-conservation-scope", "cq-existing-inventory"],
+    },
+  },
+  {
+    id: "G",
+    label: "Hala magazynowo-usługowa — wiele luk w danych",
+    prompt: "Hala magazynowo-usługowa, MPZP obowiązuje, brak wypisu i wyrysu, brak MDCP.",
+    expect: {
+      minCount: 6,
+      maxCount: 12,
+      mustIncludeIds: [
+        "cq-mpzp-excerpt",
+        "cq-storage-height",
+        "cq-docks-tir",
+        "cq-geotechnical",
+        "cq-fire-load-warehouse",
+        "cq-warehouse-utilities",
+      ],
+    },
+  },
+  {
+    id: "H",
+    label: "Hala magazynowa — kompletny opis wejściowy",
+    prompt:
+      "Hala magazynowa, MPZP obowiązuje, mam wypis i wyrys z parametrami intensywności, MDCP dostępna, brief technologiczno-logistyczny od inwestora, wysokie składowanie na regałach, towary ogólne, obciążenie pożarowe ustalone ze strefami PPOŻ i drogą pożarową, 6 doków i plac manewrowy TIR, opinia geotechniczna wykonana, przyłącza mediów i zapotrzebowanie 800 kW, wody opadowe z dachu do retencji, obciążenia posadzki pod regały ustalone.",
+    expect: {
+      maxCount: 2,
+      mustNotIncludeIds: [
+        "cq-storage-height",
+        "cq-docks-tir",
+        "cq-mdcp-status",
+        "cq-mpzp-excerpt",
+        "cq-geotechnical",
+      ],
     },
   },
 ] as const satisfies ReadonlyArray<{

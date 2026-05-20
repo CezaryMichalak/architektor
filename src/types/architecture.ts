@@ -9,6 +9,19 @@ export type ClarificationArea =
   | "technical"
   | "constraints";
 
+/** Domain area affected by a clarifying question (data completeness). */
+export type QuestionImpactArea =
+  | "planning"
+  | "documentation"
+  | "investor_brief"
+  | "geotechnics"
+  | "fire_safety"
+  | "road_access"
+  | "utilities"
+  | "structure"
+  | "environment"
+  | "formal_path";
+
 export type ProjectStage =
   | "concept"
   | "preliminary"
@@ -129,9 +142,22 @@ export interface ClarifyingQuestion {
   options?: string[];
   requiredForFinalPlan: boolean;
   priority: QuestionPriority;
+  /** Legacy UI grouping — kept for rules and schema compatibility. */
   relatedArea: ClarificationArea;
+  impactArea: QuestionImpactArea;
+  /** Points added to analysis completeness when answered (5–20). */
+  impactOnCompleteness: number;
   triggerReason: string;
 }
+
+/** Rule/AI payloads may omit impact fields — filled by makeQuestion(). */
+export type ClarifyingQuestionInput = Omit<
+  ClarifyingQuestion,
+  "impactArea" | "impactOnCompleteness"
+> & {
+  impactArea?: QuestionImpactArea;
+  impactOnCompleteness?: number;
+};
 
 export interface ClarificationAnswer {
   questionId: string;
@@ -142,7 +168,10 @@ export interface ClarificationAnswer {
 export interface ProjectAnalysis {
   projectType: string;
   projectStage: string;
+  /** Real project/process stage (MPZP, PZT, PnB, PT) — not inflated by clarification answers. */
   advancementPercentage: number;
+  /** How complete input data is for a reliable plan — rises with clarification answers. */
+  analysisCompletenessPercentage: number;
   confidenceLevel: ConfidenceLevel;
   detectedInputs: string[];
   uncertainInputs: string[];
@@ -167,6 +196,7 @@ export interface PreliminaryAnalysisResult {
   uncertainInputs: string[];
   missingCriticalInputs: string[];
   clarifyingQuestions: ClarifyingQuestion[];
+  analysisCompletenessPercentage: number;
   canGenerateFinalPlan: boolean;
   signals: ProjectSignal[];
 }
@@ -183,7 +213,7 @@ export interface ArchitectureRule {
   nextSteps: ActionStep[];
   projectStageImpact: number;
   confidenceLevel: ConfidenceLevel;
-  clarificationTriggers: ClarifyingQuestion[];
+  clarificationTriggers: ClarifyingQuestionInput[];
 }
 
 export type AppPhase =

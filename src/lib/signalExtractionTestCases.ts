@@ -12,6 +12,8 @@ export interface SignalExtractionExpectation {
   detectedMustNotInclude?: string[];
   minAdvancement?: number;
   maxAdvancement?: number;
+  minCompleteness?: number;
+  maxCompleteness?: number;
   confidenceLevel?: "low" | "medium" | "high";
 }
 
@@ -43,6 +45,7 @@ export const SIGNAL_EXTRACTION_TEST_CASES = [
       detectedMustNotInclude: ["MDCP dostępna", "Status planistyczny do weryfikacji"],
       minAdvancement: 20,
       maxAdvancement: 40,
+      maxCompleteness: 65,
       confidenceLevel: "medium",
     },
   },
@@ -86,6 +89,26 @@ export const SIGNAL_EXTRACTION_TEST_CASES = [
     },
   },
   {
+    id: "SF1",
+    label: "Dom jednorodzinny wolnostojący — pełny opis",
+    prompt:
+      "Projekt dotyczy budowy domu jednorodzinnego wolnostojącego z garażem dwustanowiskowym. Działka jest objęta MPZP, inwestor posiada wypis i wyrys z planu, ale nie zamówiono jeszcze mapy do celów projektowych. Nie wykonano badań geotechnicznych.",
+    expect: {
+      hasMPZP: true,
+      planningStatus: "mpzp_exists",
+      hasMDCP: false,
+      projectType: "single_family",
+      detectedMustInclude: [
+        "Dom jednorodzinny",
+        "Obowiązuje MPZP",
+        "Wypis i wyrys dostępny",
+        "Brak MDCP",
+        "Brak rozpoznania geotechnicznego",
+      ],
+      detectedMustNotInclude: ["Status planistyczny do weryfikacji", "MDCP dostępna", "unknown"],
+    },
+  },
+  {
     id: "S7",
     label: "Hala magazynowo-usługowa z biurowo-socjalną — nie biuro",
     prompt:
@@ -94,6 +117,8 @@ export const SIGNAL_EXTRACTION_TEST_CASES = [
       projectType: "warehouse_service_hall",
       detectedMustInclude: ["Hala magazynowo-usługowa"],
       detectedMustNotInclude: ["Budynek biurowy", "Typ: biurowy"],
+      maxCompleteness: 68,
+      maxAdvancement: 40,
     },
   },
 ] as const satisfies ReadonlyArray<{
@@ -164,6 +189,22 @@ function assertSignalCase(
   if (expect.confidenceLevel && analysis.confidenceLevel !== expect.confidenceLevel) {
     errors.push(`confidence: oczekiwano ${expect.confidenceLevel}, jest ${analysis.confidenceLevel}`);
   }
+  if (
+    expect.minCompleteness !== undefined &&
+    analysis.analysisCompletenessPercentage < expect.minCompleteness
+  ) {
+    errors.push(
+      `Za niska kompletność: ${analysis.analysisCompletenessPercentage}%`
+    );
+  }
+  if (
+    expect.maxCompleteness !== undefined &&
+    analysis.analysisCompletenessPercentage > expect.maxCompleteness
+  ) {
+    errors.push(
+      `Za wysoka kompletność: ${analysis.analysisCompletenessPercentage}%`
+    );
+  }
 
   return {
     id,
@@ -184,7 +225,7 @@ export function runSignalExtractionTests(): SignalExtractionTestResult[] {
 
 export function runSignalExtractionTestsInConsole(): void {
   const results = runSignalExtractionTests();
-  console.group("Architektor — testy ekstrakcji sygnałów (S1–S7)");
+  console.group("Architektor — testy ekstrakcji sygnałów (S1–SF1, S7)");
   let failed = 0;
   for (const r of results) {
     const status = r.passed ? "OK" : "FAIL";

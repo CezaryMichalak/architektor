@@ -1,4 +1,4 @@
-import { DISCLAIMER_PL } from "../../types/architecture";
+import { DISCLAIMER_PL, type ClarifyingQuestion } from "../../types/architecture";
 
 const CONFIDENCE_MAP: Record<string, "low" | "medium" | "high"> = {
   low: "low",
@@ -53,6 +53,7 @@ const ALLOWED_ROOT_KEYS = new Set([
   "projectType",
   "projectStage",
   "advancementPercentage",
+  "analysisCompletenessPercentage",
   "confidenceLevel",
   "detectedInputs",
   "uncertainInputs",
@@ -222,7 +223,19 @@ function normalizeClarifyingQuestion(item: unknown, index: number): Record<strin
   const question = asString(item.question);
   if (!question) return null;
   const reason = asString(item.reason) ?? asString(item.triggerReason) ?? "Wymaga doprecyzowania.";
-  const relatedArea = asString(item.relatedArea) ?? "technical";
+  const relatedArea = (asString(item.relatedArea) ?? "technical") as ClarifyingQuestion["relatedArea"];
+  const priority = (asString(item.priority) ?? "important") as ClarifyingQuestion["priority"];
+  const impactArea =
+    (asString(item.impactArea) as ClarifyingQuestion["impactArea"] | undefined) ?? "utilities";
+  const impactRaw = item.impactOnCompleteness;
+  const impactOnCompleteness =
+    typeof impactRaw === "number" && !Number.isNaN(impactRaw)
+      ? Math.max(5, Math.min(20, Math.round(impactRaw)))
+      : priority === "critical"
+        ? 18
+        : priority === "optional"
+          ? 7
+          : 12;
   return {
     id: asString(item.id) ?? `cq-ai-${index + 1}`,
     question,
@@ -230,7 +243,9 @@ function normalizeClarifyingQuestion(item: unknown, index: number): Record<strin
     options: asStringArray(item.options),
     requiredForFinalPlan: item.requiredForFinalPlan === true,
     relatedArea,
-    priority: asString(item.priority) ?? "important",
+    impactArea,
+    impactOnCompleteness,
+    priority,
     triggerReason: asString(item.triggerReason) ?? reason,
   };
 }
@@ -271,6 +286,19 @@ export function normalizeAiAnalysisPayload(raw: unknown): unknown {
   }
   if (typeof o.advancementPercentage !== "number" || Number.isNaN(o.advancementPercentage)) {
     o.advancementPercentage = 20;
+  }
+
+  if (
+    typeof o.analysisCompletenessPercentage === "string" &&
+    /^\d+$/.test(o.analysisCompletenessPercentage)
+  ) {
+    o.analysisCompletenessPercentage = parseInt(o.analysisCompletenessPercentage, 10);
+  }
+  if (
+    typeof o.analysisCompletenessPercentage !== "number" ||
+    Number.isNaN(o.analysisCompletenessPercentage)
+  ) {
+    o.analysisCompletenessPercentage = 30;
   }
 
   o.confidenceLevel = mapEnum(o.confidenceLevel, CONFIDENCE_MAP, "medium");

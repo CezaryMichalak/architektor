@@ -119,12 +119,17 @@ function buildStatusSection(analysis: ProjectAnalysis): Content[] {
     typeof analysis.advancementPercentage === "number"
       ? `${analysis.advancementPercentage}%`
       : "Brak danych";
+  const completeness =
+    typeof analysis.analysisCompletenessPercentage === "number"
+      ? `${analysis.analysisCompletenessPercentage}%`
+      : "Brak danych";
 
   return [
     sectionHeading("Status projektu"),
     labelBlock("Typ inwestycji", safeText(analysis.projectType)),
     labelBlock("Etap procesu", safeText(analysis.projectStage)),
-    labelBlock("Zaawansowanie procesu", advancement),
+    labelBlock("Zaawansowanie procesu projektowego", advancement),
+    labelBlock("Kompletność danych do analizy", completeness),
     labelBlock("Pewność analizy", confidence),
   ];
 }

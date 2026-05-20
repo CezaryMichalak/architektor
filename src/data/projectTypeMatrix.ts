@@ -7,7 +7,7 @@ import type { ProjectTypeEntry, ProjectTypeKey } from "../types/projectType";
 export const PROJECT_TYPE_MATRIX: Record<ProjectTypeKey, ProjectTypeEntry> = {
   single_family: {
     key: "single_family",
-    labelPl: "Budynek mieszkalny jednorodzinny",
+    labelPl: "Dom jednorodzinny",
     keyConcerns: [
       "MPZP / WZ i tryb formalny PnB vs zgłoszenie",
       "MDCP i lokalizacja na PZT",

@@ -70,6 +70,7 @@ export function AnalysisDashboard({ analysis, onRestart, showAiError }: Analysis
         projectType={analysis.projectType}
         projectStage={analysis.projectStage}
         advancementPercentage={analysis.advancementPercentage}
+        analysisCompletenessPercentage={analysis.analysisCompletenessPercentage}
         confidenceLevel={analysis.confidenceLevel}
       />
 
